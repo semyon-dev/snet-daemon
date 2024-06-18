@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 	"net"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
@@ -126,6 +127,7 @@ const (
 		"startup_timeout": "1m",
 		"data_dir": "storage-data-dir-1.etcd",
 		"log_level": "info",
+		"log_outputs": ["./etcd-server.log", "stdout"],
 		"enabled": false
 	},
 	"alerts_email": "", 
@@ -166,7 +168,9 @@ const (
 	"payment_channel_storage_client": {
 		"connection_timeout": "5s",
 		"request_timeout": "3s",
-		"endpoints": ["http://127.0.0.1:2379"]
+		"endpoints": ["http://127.0.0.1:2379"],
+		"log_level": "info",
+		"log_outputs": ["./etcd-server.log", "stdout"],
 	}}`
 )
 

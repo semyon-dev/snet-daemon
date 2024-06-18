@@ -13,7 +13,7 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 )
 
-// EtcdServer struct has some useful methods to wolrk with etcd server
+// EtcdServer struct has some useful methods to work with etcd server
 type EtcdServer struct {
 	conf *EtcdServerConf
 	etcd *embed.Etcd
@@ -142,6 +142,12 @@ func getEtcdConf(conf *EtcdServerConf) *embed.Config {
 
 	//  --initial-cluster-state
 	etcdConf.ClusterState = embed.ClusterStateFlagNew
+
+	// --log-level
+	etcdConf.LogLevel = conf.LogLevel
+
+	// --log-outputs
+	etcdConf.LogOutputs = conf.LogOutputs
 
 	return etcdConf
 }
