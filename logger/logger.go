@@ -51,17 +51,17 @@ func initLogger(config *viper.Viper) error {
 		return fmt.Errorf("Failed to create encoder config, error: %v", err)
 	}
 
-	enc, err := getLoggerEncoder(config, encoderConfig)
+	encoder, err := createLoggerEncoder(config, encoderConfig)
 	if err != nil {
 		return fmt.Errorf("Failed to get encoder, error: %v", err)
 	}
 
-	ws, err := createLoggerWriterSyncer(config)
+	writerSyncer, err := createLoggerWriterSyncer(config)
 	if err != nil {
 		return fmt.Errorf("Failded to get logger writer, error: %v", err)
 	}
 
-	core := zapcore.NewCore(enc, ws, level)
+	core := zapcore.NewCore(encoder, writerSyncer, level)
 	logger := zap.New(core)
 
 	// for _, hookConfigName := range config.GetStringSlice(LogHooksKey) {
@@ -94,7 +94,7 @@ func getLoggerLevel(levelString string) (zapcore.Level, error) {
 }
 
 func createEncoderConfig(config *viper.Viper) (*zapcore.EncoderConfig, error) {
-	location, err := getLocationTimeZone(config)
+	location, err := getLocationTimezone(config)
 	if err != nil {
 		return nil, err
 	}
@@ -113,13 +113,13 @@ func createEncoderConfig(config *viper.Viper) (*zapcore.EncoderConfig, error) {
 	return &encoderConfig, nil
 }
 
-func getLocationTimeZone(config *viper.Viper) (location *time.Location, err error) {
+func getLocationTimezone(config *viper.Viper) (location *time.Location, err error) {
 	timezone := config.GetString(LogTimezoneKey)
 	location, err = time.LoadLocation(timezone)
 	return
 }
 
-func getLoggerEncoder(config *viper.Viper, encoderConfig *zapcore.EncoderConfig) (zapcore.Encoder, error) {
+func createLoggerEncoder(config *viper.Viper, encoderConfig *zapcore.EncoderConfig) (zapcore.Encoder, error) {
 	var encoder zapcore.Encoder
 	switch config.GetString(LogFormatterTypeKey) {
 	case "json":
