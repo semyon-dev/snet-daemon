@@ -26,8 +26,6 @@ const (
 	LogRotationCountKey     = "log.output.rotation_count"
 )
 
-var Logger *zap.Logger
-
 // InitLogger initializes logger using configuration provided by viper
 // instance.
 //
@@ -35,34 +33,33 @@ var Logger *zap.Logger
 // formatter and output settings. To achieve this viper configuration
 // contains separate sections for each logger, each output and
 // each formatter.
-func InitLogger(config *viper.Viper) error {
-	return initLogger(config)
-}
 
-func initLogger(config *viper.Viper) error {
+func Initialize(config *viper.Viper) {
+
 	levelString := config.GetString(LogLevelKey)
 	level, err := getLoggerLevel(levelString)
 	if err != nil {
-		return fmt.Errorf("Failed to get logger level: %v\n", err)
+		panic(fmt.Errorf("failed to get logger level: %v", err))
 	}
 
 	encoderConfig, err := createEncoderConfig(config)
 	if err != nil {
-		return fmt.Errorf("Failed to create encoder config, error: %v", err)
+		panic(fmt.Errorf("failed to create encoder config, error: %v", err))
 	}
 
 	encoder, err := createLoggerEncoder(config, encoderConfig)
 	if err != nil {
-		return fmt.Errorf("Failed to get encoder, error: %v", err)
+		panic(fmt.Errorf("failed to get encoder, error: %v", err))
 	}
 
 	writerSyncer, err := createLoggerWriterSyncer(config)
 	if err != nil {
-		return fmt.Errorf("Failded to get logger writer, error: %v", err)
+		panic(fmt.Errorf("failed to get logger writer, error: %v", err))
 	}
 
 	core := zapcore.NewCore(encoder, writerSyncer, level)
 	logger := zap.New(core)
+	zap.ReplaceGlobals(logger)
 
 	// for _, hookConfigName := range config.GetStringSlice(LogHooksKey) {
 	// 	err = addHookByConfig(logger, config.Sub(hookConfigName))
@@ -72,8 +69,6 @@ func initLogger(config *viper.Viper) error {
 	// }
 
 	logger.Info("Logger initialized")
-
-	return nil
 }
 
 func getLoggerLevel(levelString string) (zapcore.Level, error) {
@@ -89,7 +84,7 @@ func getLoggerLevel(levelString string) (zapcore.Level, error) {
 	case "panic":
 		return zap.PanicLevel, nil
 	default:
-		return zapcore.Level(0), fmt.Errorf("Wrong string for level: %v. Availible options: debug, info, warn, error, panic", levelString)
+		return zapcore.Level(0), fmt.Errorf("wrong string for level: %v. Availible options: debug, info, warn, error, panic", levelString)
 	}
 }
 
@@ -142,17 +137,20 @@ func createLoggerWriterSyncer(config *viper.Viper) (zapcore.WriteSyncer, error) 
 		ws = zapcore.AddSync(os.Stderr)
 	case "file":
 		ws = zapcore.AddSync(&lumberjack.Logger{
-			Filename:   config.GetString(LogOutputFilePatternKey),
+			Filename:   config.GetString(LogOutputCurrentLinkKey),
 			MaxSize:    config.GetInt(LogRotationTimeKey) / 1024 / 1024, // Convert from seconds to megabytes
 			MaxAge:     config.GetInt(LogMaxAgeKey) / 86400,             // Convert from seconds to days
 			MaxBackups: config.GetInt(LogRotationCountKey),
 			Compress:   true,
 		})
-		if config.GetString(LogOutputCurrentLinkKey) != "" {
-			if err := os.Symlink(config.GetString(LogOutputFilePatternKey), config.GetString(LogOutputCurrentLinkKey)); err != nil {
-				return ws, fmt.Errorf("failed to create symlink: %v", err)
-			}
-		}
+
+		// if _, err := os.Lstat(); err != nil {
+		// 	if config.GetString(LogOutputCurrentLinkKey) != "" {
+		// 		if err := os.Symlink(config.GetString(LogOutputFilePatternKey), config.GetString(LogOutputCurrentLinkKey)); err != nil {
+		// 			return ws, fmt.Errorf("failed to create symlink: %v", err)
+		// 		}
+		// 	}
+		// }
 	default:
 		return ws, fmt.Errorf("unsupported log output type: %v", config.GetString(LogOutputTypeKey))
 	}

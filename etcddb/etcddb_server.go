@@ -8,9 +8,9 @@ import (
 
 	"github.com/singnet/snet-daemon/config"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"go.etcd.io/etcd/server/v3/embed"
+	"go.uber.org/zap"
 )
 
 // EtcdServer struct has some useful methods to work with etcd server
@@ -53,7 +53,7 @@ func GetEtcdServerFromVip(vip *viper.Viper) (server *EtcdServer, err error) {
 
 	conf, err := GetEtcdServerConf(vip)
 
-	log.WithField("PaymentChannelStorageServer", fmt.Sprintf("%+v", conf)).Info()
+	zap.L().Info("Getting payment channel storage sever", zap.Any("conf", conf))
 
 	if err != nil || conf == nil || !conf.Enabled {
 		return
@@ -114,9 +114,9 @@ func getEtcdConf(conf *EtcdServerConf) *embed.Config {
 		Host:   fmt.Sprintf("%s:%d", conf.Host, conf.PeerPort),
 	}
 
-	log.WithField("PaymentChannelStorageServer", fmt.Sprintf("%+v", conf)).Info()
-	log.WithField("ClientURL", clientURL).Info()
-	log.WithField("PeerURL", peerURL).Info()
+	zap.L().Info("Getting etcd config", zap.Any("PaymentChannelStorageServer", fmt.Sprintf("%+v", conf)),
+		zap.Any("ClientURL", clientURL),
+		zap.Any("PeerURL", clientURL))
 
 	etcdConf := embed.NewConfig()
 	etcdConf.Name = conf.ID

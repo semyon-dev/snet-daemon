@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"go.uber.org/zap"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 )
@@ -133,7 +133,7 @@ const (
 	"alerts_email": "", 
 	"service_heartbeat_type": "http",
     "token_expiry_in_minutes": 1440,
-    "model_training_enabled":false
+    "model_training_enabled": false
 }`
 	MinimumConfigJson string = ` {
 	"blockchain_enabled": true,
@@ -168,9 +168,7 @@ const (
 	"payment_channel_storage_client": {
 		"connection_timeout": "5s",
 		"request_timeout": "3s",
-		"endpoints": ["http://127.0.0.1:2379"],
-		"log_level": "info",
-		"log_outputs": ["./etcd-server.log", "stdout"],
+		"endpoints": ["http://127.0.0.1:2379"]
 	}}`
 )
 
@@ -235,15 +233,15 @@ func Validate() error {
 		return err
 	}
 
-	//Check if the Daemon is on the latest version or not
+	// Check if the Daemon is on the latest version or not
 	if message, err := CheckVersionOfDaemon(); err != nil {
 		//In case of any error on version check , just log it
-		log.Warning(err)
+		zap.L().Warn(err.Error())
 	} else {
-		log.Info(message)
+		zap.L().Info(message)
 	}
 
-	// the maximum that the server can receive to 2GB.
+	// Check maximum message size (The maximum that the server can receive - 2GB).
 	maxMessageSize := vip.GetInt(MaxMessageSizeInMB)
 	if maxMessageSize <= 0 || maxMessageSize > 2048 {
 		return errors.New(" max_message_size_in_mb cannot be more than 2GB (i.e 2048 MB) and has to be a positive number")
@@ -251,6 +249,7 @@ func Validate() error {
 	if err = allowedUserConfigurationChecks(); err != nil {
 		return err
 	}
+
 	return validateMeteringChecks()
 }
 
@@ -368,12 +367,12 @@ var DisplayKeys = map[string]bool{
 }
 
 func LogConfig() {
-	log.Info("Final configuration:")
+	zap.L().Info("Final configuration: ")
 	keys := vip.AllKeys()
 	sort.Strings(keys)
 	for _, key := range keys {
 		if DisplayKeys[strings.ToUpper(key)] {
-			log.Infof("%v: %v", key, vip.Get(key))
+			zap.L().Info(key, zap.Any("value", vip.Get(key)))
 		}
 	}
 }
@@ -427,7 +426,7 @@ var userAddress []common.Address
 
 func IsAllowedUser(address *common.Address) bool {
 	for _, user := range userAddress {
-		log.Println("userAddressFromConfig:" + user.Hex() + "<>" + address.Hex())
+		zap.L().Info("user address from config", zap.String("value", user.Hex()+"<>"+address.Hex()))
 		if user == *address {
 			return true
 		}
