@@ -42,13 +42,14 @@ var ServeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
 
-		logger.Initialize(config.Vip())
-		config.LogConfig()
-
 		components := InitComponents(cmd)
 		defer components.Close()
 
+		logger.Initialize()
+		config.LogConfig()
+
 		etcdServer := components.EtcdServer()
+
 		if etcdServer == nil {
 			zap.L().Info("Etcd server is disabled in the config file.")
 		}
@@ -222,7 +223,7 @@ func (d *daemon) start() {
 			}
 		})
 
-		zap.L().Debug("starting daemon")
+		zap.L().Info("Starting daemon")
 
 		corsOpts := cors.New(cors.Options{
 			AllowedOrigins: []string{"*"}, //you service is available and allowed for this base url

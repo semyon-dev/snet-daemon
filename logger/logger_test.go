@@ -1,20 +1,14 @@
 package logger
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/jonboulle/clockwork"
-	"github.com/lestrrat-go/file-rotatelogs"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 
 	"github.com/singnet/snet-daemon/config"
 )
@@ -22,7 +16,7 @@ import (
 const defaultFormatterConfigJSON = `
 	{
 		"type": "json",
-		"timezone": "UTC"
+		"timestamp_format": "UTC"
 	}`
 
 const defaultOutputConfigJSON = `
@@ -30,31 +24,28 @@ const defaultOutputConfigJSON = `
 		"type": "file",
 		"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
 		"current_link": "/tmp/snet-daemon.log",
-		"clock_timezone": "UTC",
-		"rotation_time_in_sec": 86400,
-		"max_age_in_sec": 604800,
+		"max_size_in_mb": 86400,
+		"max_age_in_days": 604800,
 		"rotation_count": 0
 	}`
+
 const defaultLogConfigJSON = `
 	{
 		"level": "info",
 		"timezone": "UTC",
 		"formatter": {
-			"type": "json"
+			"type": "json",
+			"timestamp_format": "UTC"
 		},
 		"output": {
 			"type": "file",
 			"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
 			"current_link": "/tmp/snet-daemon.log",
-			"rotation_time_in_sec": 86400,
-			"max_age_in_sec": 604800,
+			"max_size_in_mb": 86400,
+			"max_age_in_days": 604800,
 			"rotation_count": 0
 		}
 	}`
-
-var defaultFormatterConfig = readConfig(defaultFormatterConfigJSON)
-var defaultOutputConfig = readConfig(defaultOutputConfigJSON)
-var defaultLogConfig = readConfig(defaultLogConfigJSON)
 
 func TestMain(m *testing.M) {
 	result := m.Run()
@@ -63,18 +54,6 @@ func TestMain(m *testing.M) {
 	removeLogFiles("/tmp/file-rotatelogs-test.*.log")
 
 	os.Exit(result)
-}
-
-func readConfig(configJSON string) *viper.Viper {
-	var err error
-
-	var vip = viper.New()
-	err = config.ReadConfigFromJsonString(vip, configJSON)
-	if err != nil {
-		panic(fmt.Sprintf("Cannot read test config: %v", err))
-	}
-
-	return vip
 }
 
 func removeLogFiles(pattern string) {
@@ -94,361 +73,129 @@ func removeLogFiles(pattern string) {
 	}
 }
 
-func newConfigFromString(configString string, defaultVip *viper.Viper) *viper.Viper {
-	var err error
-	var configVip = viper.New()
-
-	err = config.ReadConfigFromJsonString(configVip, configString)
-	if err != nil {
-		panic(fmt.Sprintf("Cannot read test config: %v", configString))
-	}
-
-	if defaultVip != nil {
-		config.SetDefaultFromConfig(configVip, defaultVip)
-	}
-
-	return configVip
-}
-
-func TestNewFormatterTextType(t *testing.T) {
-	var formatterText = `{
-        "type": "text",
-        "timezone": "Local"
-    }`
-	var formatterConfig = newConfigFromString(formatterText, nil)
-
-	var formatter, err = newFormatterByConfig(formatterConfig)
-
-	assert.Nil(t, err)
-	_, isFormatterDelegate := formatter.delegate.(*log.TextFormatter)
-	assert.True(t, isFormatterDelegate, "Unexpected underlying formatter type, actual: %T, expected: %T", formatter.delegate, &log.TextFormatter{})
-	assert.Equal(t, time.Local, formatter.timestampLocation)
-}
-
-func TestNewFormatterTextTypeTimestampFormat(t *testing.T) {
-	var formatterText = `{
-        "type": "text",
-        "timezone": "UTC",
-        "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"
-    }`
-	var formatterConfig = newConfigFromString(formatterText, nil)
-
-	var formatter, err = newFormatterByConfig(formatterConfig)
-	assert.Nil(t, err)
-	data, err := formatter.Format(&log.Entry{
-		Level:   log.InfoLevel,
-		Time:    time.Date(2019, time.February, 5, 16, 29, 13, 123456789, time.UTC),
-		Message: "test message",
-	})
-	assert.Nil(t, err)
-	assert.Equal(t, "time=\"2019-02-05T16:29:13.123456789Z\" level=info msg=\"test message\"\n", string(data))
-}
-
-func TestNewFormatterJsonType(t *testing.T) {
-	var formatterJSON = `{
-        "type": "json",
-        "timezone": "Local"
-    }`
-	var formatterConfig = newConfigFromString(formatterJSON, nil)
-
-	var formatter, err = newFormatterByConfig(formatterConfig)
-
-	assert.Nil(t, err)
-	_, isFormatterDelegate := formatter.delegate.(*log.JSONFormatter)
-	assert.True(t, isFormatterDelegate, "Unexpected underlying formatter type, actual: %T, expected: %T", formatter.delegate, &log.JSONFormatter{})
-	assert.Equal(t, time.Local, formatter.timestampLocation)
-}
-
-type logLine struct {
-	Level string
-	Msg   string
-	Time  string
-}
-
-func TestNewFormatterJSONTypeTimestampFormat(t *testing.T) {
-	var formatterJSON = `{
-        "type": "json",
-        "timezone": "UTC",
-        "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"
-    }`
-	var formatterConfig = newConfigFromString(formatterJSON, nil)
-
-	var formatter, err = newFormatterByConfig(formatterConfig)
-	assert.Nil(t, err)
-	buffer, err := formatter.Format(&log.Entry{
-		Level:   log.InfoLevel,
-		Time:    time.Date(2019, time.February, 5, 16, 29, 13, 123456789, time.UTC),
-		Message: "test message",
-	})
-	assert.Nil(t, err)
-	var data = logLine{}
-	err = json.Unmarshal(buffer, &data)
-	assert.Nil(t, err)
-	assert.Equal(t, logLine{
-		Level: "info",
-		Msg:   "test message",
-		Time:  "2019-02-05T16:29:13.123456789Z",
-	}, data)
-}
-
-func TestNewFormatterIncorrectType(t *testing.T) {
-	var formatterJSON = `{
-        "type": "UNKNOWN"
-    }`
-	var formatterConfig = newConfigFromString(formatterJSON, defaultFormatterConfig)
-
-	var _, err = newFormatterByConfig(formatterConfig)
-
-	assert.NotNil(t, err)
-	assert.Equal(t, errors.New("Unexpected formatter type: UNKNOWN"), err)
-}
-
-func TestNewFormatterIncorrectTimestampTimezone(t *testing.T) {
-	var formatterJSON = `{
-        "timezone": "UNKNOWN..."
-    }`
-	var formatterConfig = newConfigFromString(formatterJSON, defaultFormatterConfig)
-
-	var _, err = newFormatterByConfig(formatterConfig)
-
-	assert.Equal(t, errors.New("time: invalid location name"), err)
-}
-
-type underlyingFormatterMock struct {
-}
-
-func (f *underlyingFormatterMock) Format(entry *log.Entry) ([]byte, error) {
-	var buffer *bytes.Buffer = &bytes.Buffer{}
-	if _, err := buffer.WriteString(entry.Time.Format(time.RFC3339)); err != nil {
-		return nil, err
-	}
-	return buffer.Bytes(), nil
-}
-
-func TestTimezoneFormatter(t *testing.T) {
-	var clockMock clockwork.FakeClock
-	if japanTimezone, err := time.LoadLocation("Asia/Tokyo"); err == nil {
-		clockMock = clockwork.NewFakeClockAt(time.Date(1980, time.August, 3, 13, 0, 0, 0, japanTimezone))
-	} else {
-		t.Fatal("Cannot not get Japan timezone", err)
-	}
-	var formatter = timezoneFormatter{&underlyingFormatterMock{}, time.UTC}
-	var timestamp = clockMock.Now()
-
-	var formattedTimestamp, err = formatter.Format(&log.Entry{Time: timestamp})
-
-	assert.Nil(t, err)
-	assert.Equal(t, timestamp.In(time.UTC).Format(time.RFC3339), string(formattedTimestamp))
-}
-
-func TestNewFormatterDefault(t *testing.T) {
-	var formatterConfig = viper.New()
-	config.SetDefaultFromConfig(formatterConfig, defaultFormatterConfig)
-
-	var formatter, err = newFormatterByConfig(formatterConfig)
-
-	assert.Nil(t, err)
-	_, isFormatterDelegate := formatter.delegate.(*log.JSONFormatter)
-	assert.True(t, isFormatterDelegate, "Unexpected underlying formatter type, actual: %T, expected: %T", formatter.delegate, &log.JSONFormatter{})
-	assert.Equal(t, time.UTC, formatter.timestampLocation)
-}
-
-func TestNewOutputFile(t *testing.T) {
-	var outputConfigJSON = `{
-        "type": "file",
-        "file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
-        "current_link": "/tmp/snet-daemon.log",
-        "clock_timezone": "Local",
-        "rotation_time_in_sec": 86400,
-        "max_age_in_sec": 604800,
-        "rotation_count": 0
-    }`
-	var outputConfig = newConfigFromString(outputConfigJSON, nil)
-
-	var writer, err = newOutputByConfig(outputConfig)
-
-	assert.Nil(t, err)
-	_, isFileWriter := writer.(*rotatelogs.RotateLogs)
-	assert.True(t, isFileWriter, "Unexpected writer type, actual: %T, expected: %T", writer, &rotatelogs.RotateLogs{})
-	// there is no simple way to check that other parameters are applied
-	// correctly
-}
-
-func TestNewOutputStdout(t *testing.T) {
-	var outputConfigJSON = `{
-        "type": "stdout"
-    }`
-	var outputConfig = newConfigFromString(outputConfigJSON, nil)
-
-	var writer, err = newOutputByConfig(outputConfig)
-
-	assert.Nil(t, err)
-	assert.Equal(t, os.Stdout, writer, "Unexpected writer type")
-}
-
-func TestNewOutputIncorrectType(t *testing.T) {
-	var outputConfigJSON = `{
-        "type": "UNKNOWN"
-    }`
-	var outputConfig = newConfigFromString(outputConfigJSON, defaultOutputConfig)
-
-	var _, err = newOutputByConfig(outputConfig)
-
-	assert.NotNil(t, err)
-	assert.Equal(t, errors.New("Unexpected output type: UNKNOWN"), err)
-}
-
-func TestNewOutputIncorrectClockTimezone(t *testing.T) {
-	var outputConfigJSON = `{
-        "type": "file",
-        "clock_timezone": "UNKNOWN..."
-    }`
-	var outputConfig = newConfigFromString(outputConfigJSON, defaultOutputConfig)
-
-	var _, err = newOutputByConfig(outputConfig)
-
-	assert.NotNil(t, err)
-	assert.Equal(t, errors.New("time: invalid location name"), err)
-}
-
-func TestNewIncorrectFileOutputFilePattern(t *testing.T) {
-	var outputConfigJSON = `{
-        "type": "file",
-        "file_pattern": "%5"
-    }`
-	var outputConfig = newConfigFromString(outputConfigJSON, defaultOutputConfig)
-
-	var _, err = newOutputByConfig(outputConfig)
-
-	assert.NotNil(t, err)
-}
-
-func TestNewOutputDefault(t *testing.T) {
-	var outputConfig = viper.New()
-	config.SetDefaultFromConfig(outputConfig, defaultOutputConfig)
-
-	var writer, err = newOutputByConfig(outputConfig)
-
-	assert.Nil(t, err)
-	_, isFileWriter := writer.(*rotatelogs.RotateLogs)
-	assert.True(t, isFileWriter, "Unexpected writer type, actual: %T, expected: %T", writer, &rotatelogs.RotateLogs{})
-}
-
-func TestInitLogger(t *testing.T) {
-	var loggerConfigJSON = `
+func TestCreateEncoderConfig(t *testing.T) {
+	var formatterText = `
 	{
-		"level": "error",
-		"timezone": "Local",
-		"formatter": {
-			"type": "json"
-		},
-		"output": {
-			"type": "file",
-			"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
-			"current_link": "/tmp/snet-daemon.log",
-			"rotation_time_in_sec": 86400,
-			"max_age_in_sec": 604800,
-			"rotation_count": 0
+	    "type": "text",
+	    "timestamp_format": "UTC"
+	}`
+
+	config.LoadConfig(formatterText)
+	_, err := createEncoderConfig()
+
+	assert.Nil(t, err)
+}
+
+func TestGetLocationTimezone(t *testing.T) {
+	logConfigText := `
+	{
+		"log": {
+			"level": "info",
+			"timezone": "UTC",
+			"formatter": {
+				"type": "json",
+				"timestamp_format": "UTC"
+			},
+			"output": {
+				"type": "file",
+				"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
+				"current_link": "/tmp/snet-daemon.log",
+				"max_size_in_mb": 86400,
+				"max_age_in_days": 604800,
+				"rotation_count": 0
+			}
 		}
 	}`
-	var loggerConfig = newConfigFromString(loggerConfigJSON, nil)
-	var logger = log.New()
 
-	var err = initLogger(logger, loggerConfig)
+	config.LoadConfig(logConfigText)
+	v := config.Vip()
+	assert.NotNil(t, config.Vip())
 
+	timezoneViper := v.GetString(LogTimezoneKey)
+	assert.NotEmpty(t, timezoneViper)
+
+	timezone, err := getLocationTimezone()
+	assert.NoError(t, err)
+	assert.NotNil(t, timezone)
+
+	currentTime := time.Now()
+	assert.Equal(t, currentTime.Format(timezoneViper), currentTime.Format(timezone.String()))
+}
+
+func TestGetLoggerEncoder(t *testing.T) {
+	logConfigText := `{
+		"log": {
+			"level": "info",
+			"timezone": "UTC",
+			"formatter": {
+				"type": "json",
+				"timestamp_format": "UTC"
+			},
+			"output": {
+				"type": "file",
+				"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
+				"current_link": "/tmp/snet-daemon.log",
+				"max_size_in_mb": 86400,
+				"max_age_in_days": 604800,
+				"rotation_count": 0
+			}
+		}
+	}`
+
+	config.LoadConfig(logConfigText)
+	assert.NotNil(t, config.Vip())
+
+	encoderConf, err := createEncoderConfig()
+	assert.NotNil(t, encoderConf)
 	assert.Nil(t, err)
-	assert.Equal(t, log.ErrorLevel, logger.Level)
-	var formatter = logger.Formatter.(*timezoneFormatter)
-	assert.Equal(t, time.Local, formatter.timestampLocation)
-	_, isFormatterDelegate := formatter.delegate.(*log.JSONFormatter)
-	assert.True(t, isFormatterDelegate, "Unexpected underlying formatter type, actual: %T, expected: %T", formatter.delegate, &log.JSONFormatter{})
-	_, isFileWriter := logger.Out.(*rotatelogs.RotateLogs)
-	assert.True(t, isFileWriter, "Unexpected writer type, actual: %T, expected: %T", logger.Out, &rotatelogs.RotateLogs{})
+
+	encoder, err := createLoggerEncoder(encoderConf)
+	assert.NotNil(t, encoder)
 }
 
-func TestInitLoggerIncorrectLevel(t *testing.T) {
-	var loggerConfigJSON = `{
-		"level": "UNKNOWN"
-    }`
-	var loggerConfig = newConfigFromString(loggerConfigJSON, defaultLogConfig)
+func TestGetLoggerLevel(t *testing.T) {
+	level := "info"
+	logLevel, err := getLoggerLevel(level)
+	assert.Nil(t, err)
+	assert.Equal(t, zap.InfoLevel, logLevel)
 
-	var err = InitLogger(loggerConfig)
+	level = "debug"
+	logLevel, err = getLoggerLevel(level)
+	assert.Nil(t, err)
+	assert.Equal(t, zap.DebugLevel, logLevel)
 
-	assert.Equal(t, errors.New("Unable parse log level string: UNKNOWN, err: not a valid logrus Level: \"UNKNOWN\""), err, "Unexpected error message message")
+	level = "warn"
+	logLevel, err = getLoggerLevel(level)
+	assert.Nil(t, err)
+	assert.Equal(t, zap.WarnLevel, logLevel)
+
+	level = "error"
+	logLevel, err = getLoggerLevel(level)
+	assert.Nil(t, err)
+	assert.Equal(t, zap.ErrorLevel, logLevel)
+
+	level = "panic"
+	logLevel, err = getLoggerLevel(level)
+	assert.Nil(t, err)
+	assert.Equal(t, zap.PanicLevel, logLevel)
+
+	level = "wrong_level"
+	logLevel, err = getLoggerLevel(level)
+	assert.NotNil(t, err)
+	assert.Equal(t, "wrong string for level: wrong_level. Availible options: debug, info, warn, error, panic", err.Error())
 }
 
-func TestInitLoggerIncorrectFormatter(t *testing.T) {
-	var loggerConfigJSON = `{
-		"formatter": {
-			"type": "UNKNOWN"
-		}
-    }`
-	var loggerConfig = newConfigFromString(loggerConfigJSON, defaultLogConfig)
+func TestFormatFileName(t *testing.T) {
+	mockTime := time.Date(2024, 7, 4, 12, 34, 56, 789000000, time.UTC)
 
-	var err = InitLogger(loggerConfig)
+	filePatternName := "./snet-daemon.%Y-----%m-----%d--%M.log"
+	expectedFileName := "./snet-daemon.2024-----07-----04--34.log"
+	fileName, err := formatFileName(filePatternName, mockTime)
+	assert.Nil(t, err)
 
-	assert.Equal(t, errors.New("Unable initialize log formatter, error: Unexpected formatter type: UNKNOWN"), err, "Unexpected error message")
-}
+	assert.Equal(t, expectedFileName, fileName)
 
-func TestInitLoggerIncorrectOutput(t *testing.T) {
-	var loggerConfigJSON = `{
-		"output": {
-			"type": "UNKNOWN"
-		}
-    }`
-	var loggerConfig = newConfigFromString(loggerConfigJSON, defaultLogConfig)
-
-	var err = InitLogger(loggerConfig)
-
-	assert.Equal(t, errors.New("Unable initialize log output, error: Unexpected output type: UNKNOWN"), err, "Unexpected error message")
-}
-
-func TestInitLoggerIncorrectTimezone(t *testing.T) {
-	var loggerConfigJSON = `{
-		"timezone": "UNKNOWN..."
-    }`
-	var loggerConfig = newConfigFromString(loggerConfigJSON, defaultLogConfig)
-	var logger = log.New()
-
-	var err = initLogger(logger, loggerConfig)
-
-	assert.Equal(t, errors.New("Unable initialize log formatter, error: time: invalid location name"), err)
-}
-
-func TestLogRotation(t *testing.T) {
-	var err error
-	var logFileInfo os.FileInfo
-	var startTime time.Time
-
-	var clockMock = clockwork.NewFakeClockAt(
-		time.Date(2018, time.September, 26, 13, 0, 0, 0, time.UTC))
-	var logWriter, _ = rotatelogs.New(
-		"/tmp/file-rotatelogs-test.%Y%m%d.log",
-		rotatelogs.WithClock(clockMock),
-		rotatelogs.WithRotationTime(24*time.Hour),
-		rotatelogs.WithMaxAge(7*24*time.Hour),
-	)
-	var logger = log.New()
-	logger.SetOutput(logWriter)
-
-	// without Add(-time.Second) testStart time is surprisingly after log file
-	// modification date. Difference is about few milliseconds
-	startTime = time.Now().Add(-time.Second)
-	logger.Info("mockedTime: ", clockMock.Now(), " realTime: ", time.Now())
-	logFileInfo, err = os.Stat("/tmp/file-rotatelogs-test.20180926.log")
-	assert.Nil(t, err, "Cannot read log file info")
-	assert.Truef(t, logFileInfo.ModTime().After(startTime), "Log was not updated, test started at: %v, file updated at: %v", startTime, logFileInfo.ModTime())
-
-	startTime = time.Now().Add(-time.Second)
-	clockMock.Advance(10 * time.Hour)
-	logger.Info("mockedTime: ", clockMock.Now(), " realTime: ", time.Now())
-	logFileInfo, err = os.Stat("/tmp/file-rotatelogs-test.20180927.log")
-	assert.NotNil(t, err, "Log was rotated before correct time")
-
-	startTime = time.Now().Add(-time.Second)
-	clockMock.Advance(1*time.Hour + 1*time.Second)
-	logger.Info("mockedTime: ", clockMock.Now(), " realTime: ", time.Now())
-	logFileInfo, err = os.Stat("/tmp/file-rotatelogs-test.20180927.log")
-	assert.Nil(t, err, "Cannot read log file info")
-	assert.Truef(t, logFileInfo.ModTime().After(startTime), "Log was not updated, test started at: %v, file updated at: %v", startTime, logFileInfo.ModTime())
+	filePatternNameError := "./snet-daemon.%x%l%f.log"
+	_, err = formatFileName(filePatternNameError, mockTime)
+	assert.NotNil(t, err)
 }

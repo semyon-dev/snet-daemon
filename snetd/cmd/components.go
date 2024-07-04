@@ -87,11 +87,11 @@ func loadConfigFileFromCommandLine(configFlag *pflag.Flag) {
 	if configFlag.Changed || isFileExist(configFile) {
 		err := config.LoadConfig(configFile)
 		if err != nil {
-			zap.L().Panic("Error reading configuration file", zap.String("ConfigFile", configFile), zap.Error(err))
+			panic(fmt.Sprint("[CONFIG] Error reading configuration file"))
 		}
-		zap.L().Info("Using configuration file", zap.Any("configFile", configFile))
+		fmt.Println("[CONFIG] Using custom configuration file")
 	} else {
-		zap.L().Info("Configuration file is not set, using default configuration")
+		fmt.Println("[CONFIG] Configuration file is not set, using default configuration")
 	}
 }
 

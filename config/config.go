@@ -99,14 +99,14 @@ const (
 		"timezone": "UTC",
 		"formatter": {
 			"type": "text",
-			"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"
+			"timestamp_format": "2006-01-02"
 		},
 		"output": {
 			"type": "file",
 			"file_pattern": "./snet-daemon.%Y%m%d.log",
 			"current_link": "./snet-daemon.log",
-			"rotation_time_in_sec": 86400,
-			"max_age_in_sec": 604800,
+			"max_size_in_mb": 10,
+			"max_age_in_days": 7,
 			"rotation_count": 0
 		},
 		"hooks": []
@@ -153,17 +153,10 @@ const (
 		"timezone": "UTC",
 		"formatter": {
 			"type": "text",
-			"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"
 		},
 		"output": {
 			"type": "file",
-			"file_pattern": "./snet-daemon.%Y%m%d.log",
-			"current_link": "./snet-daemon.log",
-			"rotation_time_in_sec": 86400,
-			"max_age_in_sec": 604800,
-			"rotation_count": 0
-		},
-		"hooks": []
+		}
 	},
 	"payment_channel_storage_client": {
 		"connection_timeout": "5s",
@@ -303,6 +296,10 @@ func GetDuration(key string) time.Duration {
 
 func GetBool(key string) bool {
 	return vip.GetBool(key)
+}
+
+func GetStringSlice(key string) []string {
+	return vip.GetStringSlice(key)
 }
 
 func Get(key string) any {

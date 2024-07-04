@@ -1,11 +1,13 @@
 package logger
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/spf13/viper"
+	"github.com/singnet/snet-daemon/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -21,8 +23,8 @@ const (
 	LogOutputTypeKey        = "log.output.type"
 	LogOutputFilePatternKey = "log.output.file_pattern"
 	LogOutputCurrentLinkKey = "log.output.current_link"
-	LogRotationTimeKey      = "log.output.rotation_time_in_sec"
-	LogMaxAgeKey            = "log.output.max_age_in_sec"
+	LogRotationTimeKey      = "log.output.max_size_in_mb"
+	LogMaxAgeKey            = "log.output.max_age_in_days"
 	LogRotationCountKey     = "log.output.rotation_count"
 )
 
@@ -34,7 +36,7 @@ const (
 // contains separate sections for each logger, each output and
 // each formatter.
 
-func Initialize(config *viper.Viper) {
+func Initialize() {
 
 	levelString := config.GetString(LogLevelKey)
 	level, err := getLoggerLevel(levelString)
@@ -42,17 +44,17 @@ func Initialize(config *viper.Viper) {
 		panic(fmt.Errorf("failed to get logger level: %v", err))
 	}
 
-	encoderConfig, err := createEncoderConfig(config)
+	encoderConfig, err := createEncoderConfig()
 	if err != nil {
 		panic(fmt.Errorf("failed to create encoder config, error: %v", err))
 	}
 
-	encoder, err := createLoggerEncoder(config, encoderConfig)
+	encoder, err := createLoggerEncoder(encoderConfig)
 	if err != nil {
 		panic(fmt.Errorf("failed to get encoder, error: %v", err))
 	}
 
-	writerSyncer, err := createLoggerWriterSyncer(config)
+	writerSyncer, err := createLoggerWriterSyncer()
 	if err != nil {
 		panic(fmt.Errorf("failed to get logger writer, error: %v", err))
 	}
@@ -88,8 +90,8 @@ func getLoggerLevel(levelString string) (zapcore.Level, error) {
 	}
 }
 
-func createEncoderConfig(config *viper.Viper) (*zapcore.EncoderConfig, error) {
-	location, err := getLocationTimezone(config)
+func createEncoderConfig() (*zapcore.EncoderConfig, error) {
+	location, err := getLocationTimezone()
 	if err != nil {
 		return nil, err
 	}
@@ -105,16 +107,43 @@ func createEncoderConfig(config *viper.Viper) (*zapcore.EncoderConfig, error) {
 			enc.AppendString(t.In(location).Format(time.RFC3339))
 		}
 	}
+	encoderConfig.EncodeCaller = zapcore.FullCallerEncoder
 	return &encoderConfig, nil
 }
 
-func getLocationTimezone(config *viper.Viper) (location *time.Location, err error) {
+func getLocationTimezone() (location *time.Location, err error) {
 	timezone := config.GetString(LogTimezoneKey)
 	location, err = time.LoadLocation(timezone)
 	return
 }
 
-func createLoggerEncoder(config *viper.Viper, encoderConfig *zapcore.EncoderConfig) (zapcore.Encoder, error) {
+func formatFileName(pattern string, now time.Time) (string, error) {
+
+	formatMap := map[string]string{
+		"%Y": fmt.Sprintf("%04d", now.Year()),
+		"%m": fmt.Sprintf("%02d", int(now.Month())),
+		"%d": fmt.Sprintf("%02d", now.Day()),
+		"%H": fmt.Sprintf("%02d", now.Hour()),
+		"%M": fmt.Sprintf("%02d", now.Minute()),
+		"%S": fmt.Sprintf("%02d", now.Second()),
+	}
+
+	parts := strings.Split(pattern, "%")
+
+	for _, part := range parts[1:] {
+		if len(part) > 0 && !strings.ContainsAny(part[0:1], "YmdHMS") {
+			return "", errors.New("invalid placeholder found in pattern: %" + part[0:1])
+		}
+	}
+
+	for placeholder, value := range formatMap {
+		pattern = strings.ReplaceAll(pattern, placeholder, value)
+	}
+
+	return pattern, nil
+}
+
+func createLoggerEncoder(encoderConfig *zapcore.EncoderConfig) (zapcore.Encoder, error) {
 	var encoder zapcore.Encoder
 	switch config.GetString(LogFormatterTypeKey) {
 	case "json":
@@ -127,32 +156,48 @@ func createLoggerEncoder(config *viper.Viper, encoderConfig *zapcore.EncoderConf
 	return encoder, nil
 }
 
-func createLoggerWriterSyncer(config *viper.Viper) (zapcore.WriteSyncer, error) {
+func createLoggerWriterSyncer() (zapcore.WriteSyncer, error) {
 
-	var ws zapcore.WriteSyncer
-	switch config.GetString(LogOutputTypeKey) {
-	case "stdout":
-		ws = zapcore.AddSync(os.Stdout)
-	case "stderr":
-		ws = zapcore.AddSync(os.Stderr)
-	case "file":
-		ws = zapcore.AddSync(&lumberjack.Logger{
-			Filename:   config.GetString(LogOutputCurrentLinkKey),
-			MaxSize:    config.GetInt(LogRotationTimeKey) / 1024 / 1024, // Convert from seconds to megabytes
-			MaxAge:     config.GetInt(LogMaxAgeKey) / 86400,             // Convert from seconds to days
-			MaxBackups: config.GetInt(LogRotationCountKey),
-			Compress:   true,
-		})
+	var writers []zapcore.WriteSyncer
 
-		// if _, err := os.Lstat(); err != nil {
-		// 	if config.GetString(LogOutputCurrentLinkKey) != "" {
-		// 		if err := os.Symlink(config.GetString(LogOutputFilePatternKey), config.GetString(LogOutputCurrentLinkKey)); err != nil {
-		// 			return ws, fmt.Errorf("failed to create symlink: %v", err)
-		// 		}
-		// 	}
-		// }
-	default:
-		return ws, fmt.Errorf("unsupported log output type: %v", config.GetString(LogOutputTypeKey))
+	configWriters := config.GetStringSlice(LogOutputTypeKey)
+
+	if len(configWriters) == 0 {
+		return nil, fmt.Errorf("failed to read log.output.type from config : %v", configWriters)
 	}
-	return ws, nil
+
+	for _, writer := range configWriters {
+		switch writer {
+		case "stdout":
+			writers = append(writers, zapcore.AddSync(os.Stdout))
+		case "stderr":
+			writers = append(writers, zapcore.AddSync(os.Stderr))
+		case "file":
+			fileName, err := formatFileName(config.GetString(LogOutputFilePatternKey), time.Now())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create file writer for logger: %v", err)
+			}
+			writers = append(writers, zapcore.AddSync(&lumberjack.Logger{
+				Filename:   fileName,
+				MaxSize:    config.GetInt(LogRotationTimeKey),
+				MaxAge:     config.GetInt(LogMaxAgeKey),
+				MaxBackups: config.GetInt(LogRotationCountKey),
+				Compress:   true,
+			}))
+
+			if _, err := os.Lstat(config.GetString(LogOutputCurrentLinkKey)); err != nil {
+				if config.GetString(LogOutputCurrentLinkKey) != "" {
+					if err := os.Symlink(config.GetString(LogOutputFilePatternKey), config.GetString(LogOutputCurrentLinkKey)); err != nil {
+						return nil, fmt.Errorf("failed to create symlink: %v", err)
+					}
+				}
+			}
+		default:
+			return nil, fmt.Errorf("unsupported log output type: %v", writer)
+		}
+	}
+
+	multipleWs := zapcore.NewMultiWriteSyncer(writers...)
+
+	return multipleWs, nil
 }
