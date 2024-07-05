@@ -23,7 +23,7 @@ const (
 	LogOutputTypeKey        = "log.output.type"
 	LogOutputFilePatternKey = "log.output.file_pattern"
 	LogOutputCurrentLinkKey = "log.output.current_link"
-	LogRotationTimeKey      = "log.output.max_size_in_mb"
+	LogMaxSizeKey           = "log.output.max_size_in_mb"
 	LogMaxAgeKey            = "log.output.max_age_in_days"
 	LogRotationCountKey     = "log.output.rotation_count"
 )
@@ -49,12 +49,12 @@ func Initialize() {
 		panic(fmt.Errorf("failed to create encoder config, error: %v", err))
 	}
 
-	encoder, err := createLoggerEncoder(encoderConfig)
+	encoder, err := createEncoder(encoderConfig)
 	if err != nil {
 		panic(fmt.Errorf("failed to get encoder, error: %v", err))
 	}
 
-	writerSyncer, err := createLoggerWriterSyncer()
+	writerSyncer, err := createWriterSyncer()
 	if err != nil {
 		panic(fmt.Errorf("failed to get logger writer, error: %v", err))
 	}
@@ -118,7 +118,6 @@ func getLocationTimezone() (location *time.Location, err error) {
 }
 
 func formatFileName(pattern string, now time.Time) (string, error) {
-
 	formatMap := map[string]string{
 		"%Y": fmt.Sprintf("%04d", now.Year()),
 		"%m": fmt.Sprintf("%02d", int(now.Month())),
@@ -143,7 +142,7 @@ func formatFileName(pattern string, now time.Time) (string, error) {
 	return pattern, nil
 }
 
-func createLoggerEncoder(encoderConfig *zapcore.EncoderConfig) (zapcore.Encoder, error) {
+func createEncoder(encoderConfig *zapcore.EncoderConfig) (zapcore.Encoder, error) {
 	var encoder zapcore.Encoder
 	switch config.GetString(LogFormatterTypeKey) {
 	case "json":
@@ -156,14 +155,13 @@ func createLoggerEncoder(encoderConfig *zapcore.EncoderConfig) (zapcore.Encoder,
 	return encoder, nil
 }
 
-func createLoggerWriterSyncer() (zapcore.WriteSyncer, error) {
-
+func createWriterSyncer() (zapcore.WriteSyncer, error) {
 	var writers []zapcore.WriteSyncer
 
 	configWriters := config.GetStringSlice(LogOutputTypeKey)
 
 	if len(configWriters) == 0 {
-		return nil, fmt.Errorf("failed to read log.output.type from config : %v", configWriters)
+		return nil, fmt.Errorf("failed to read log.output.type from config: %v", configWriters)
 	}
 
 	for _, writer := range configWriters {
@@ -175,21 +173,25 @@ func createLoggerWriterSyncer() (zapcore.WriteSyncer, error) {
 		case "file":
 			fileName, err := formatFileName(config.GetString(LogOutputFilePatternKey), time.Now())
 			if err != nil {
-				return nil, fmt.Errorf("failed to create file writer for logger: %v", err)
+				return nil, fmt.Errorf("failed to create file writer for logger, %v", err)
 			}
 			writers = append(writers, zapcore.AddSync(&lumberjack.Logger{
 				Filename:   fileName,
-				MaxSize:    config.GetInt(LogRotationTimeKey),
+				MaxSize:    config.GetInt(LogMaxSizeKey),
 				MaxAge:     config.GetInt(LogMaxAgeKey),
 				MaxBackups: config.GetInt(LogRotationCountKey),
 				Compress:   true,
 			}))
 
-			if _, err := os.Lstat(config.GetString(LogOutputCurrentLinkKey)); err != nil {
-				if config.GetString(LogOutputCurrentLinkKey) != "" {
-					if err := os.Symlink(config.GetString(LogOutputFilePatternKey), config.GetString(LogOutputCurrentLinkKey)); err != nil {
-						return nil, fmt.Errorf("failed to create symlink: %v", err)
+			currentLink := config.GetString(LogOutputCurrentLinkKey)
+			if currentLink != "" {
+				if _, err := os.Lstat(currentLink); err == nil {
+					if err := os.Remove(currentLink); err != nil {
+						return nil, fmt.Errorf("failed to remove existing symlink: %v", err)
 					}
+				}
+				if err := os.Symlink(fileName, currentLink); err != nil {
+					return nil, fmt.Errorf("failed to create symlink: %v", err)
 				}
 			}
 		default:

@@ -7,27 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/singnet/snet-daemon/config"
 )
-
-const defaultFormatterConfigJSON = `
-	{
-		"type": "json",
-		"timestamp_format": "UTC"
-	}`
-
-const defaultOutputConfigJSON = `
-	{
-		"type": "file",
-		"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
-		"current_link": "/tmp/snet-daemon.log",
-		"max_size_in_mb": 86400,
-		"max_age_in_days": 604800,
-		"rotation_count": 0
-	}`
 
 const defaultLogConfigJSON = `
 	{
@@ -35,7 +21,7 @@ const defaultLogConfigJSON = `
 		"timezone": "UTC",
 		"formatter": {
 			"type": "json",
-			"timestamp_format": "UTC"
+			"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"
 		},
 		"output": {
 			"type": "file",
@@ -46,6 +32,25 @@ const defaultLogConfigJSON = `
 			"rotation_count": 0
 		}
 	}`
+
+var vip *viper.Viper
+
+func setupConfig() {
+	vip = viper.New()
+	vip.SetEnvPrefix("SNET")
+	vip.AutomaticEnv()
+
+	defaults := viper.New()
+	err := config.ReadConfigFromJsonString(defaults, defaultLogConfigJSON)
+	if err != nil {
+		panic(fmt.Sprintf("Cannot load default config: %v", err))
+	}
+	config.SetDefaultFromConfig(vip, defaults)
+
+	vip.AddConfigPath(".")
+
+	config.SetVip(vip)
+}
 
 func TestMain(m *testing.M) {
 	result := m.Run()
@@ -73,129 +78,401 @@ func removeLogFiles(pattern string) {
 	}
 }
 
-func TestCreateEncoderConfig(t *testing.T) {
-	var formatterText = `
-	{
-	    "type": "text",
-	    "timestamp_format": "UTC"
-	}`
-
-	config.LoadConfig(formatterText)
-	_, err := createEncoderConfig()
-
-	assert.Nil(t, err)
+type testGetLocationTimezone struct {
+	name          string
+	timezone      string
+	expectedError string
 }
 
 func TestGetLocationTimezone(t *testing.T) {
-	logConfigText := `
-	{
-		"log": {
-			"level": "info",
-			"timezone": "UTC",
-			"formatter": {
-				"type": "json",
-				"timestamp_format": "UTC"
-			},
-			"output": {
-				"type": "file",
-				"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
-				"current_link": "/tmp/snet-daemon.log",
-				"max_size_in_mb": 86400,
-				"max_age_in_days": 604800,
-				"rotation_count": 0
+	setupConfig()
+
+	testCases := []testGetLocationTimezone{
+		{
+			name:     "Valid timzone",
+			timezone: "UTC",
+		},
+		{
+			name:          "Invalid timzone",
+			timezone:      "INVALID",
+			expectedError: "unknown time zone INVALID",
+		},
+		{
+			name:     "Valid timezone",
+			timezone: "America/New_york",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vip.Set(LogTimezoneKey, tc.timezone)
+
+			timezone, err := getLocationTimezone()
+
+			if tc.expectedError != "" {
+				assert.Error(t, err)
+				assert.Equal(t, tc.expectedError, err.Error())
+			} else {
+				assert.NoError(t, err)
+				currentTime := time.Now()
+				assert.Equal(t, currentTime.Format(tc.timezone), currentTime.Format(timezone.String()))
 			}
-		}
-	}`
+		})
+	}
+}
 
-	config.LoadConfig(logConfigText)
-	v := config.Vip()
-	assert.NotNil(t, config.Vip())
+type encoderConfigTestCase struct {
+	name            string
+	timeStampFormat string
+	timezone        string
+	expectedError   string
+}
 
-	timezoneViper := v.GetString(LogTimezoneKey)
-	assert.NotEmpty(t, timezoneViper)
+func TestCreateEncoderConfig(t *testing.T) {
+	setupConfig()
 
-	timezone, err := getLocationTimezone()
-	assert.NoError(t, err)
-	assert.NotNil(t, timezone)
+	testCases := []encoderConfigTestCase{
+		{
+			name:            "Valid timestamp format",
+			timeStampFormat: "2006-01-02",
+			timezone:        "UTC",
+		},
+		{
+			name:     "Default timestamp format",
+			timezone: "UTC",
+		},
+		{
+			name:          "Invalid timezone",
+			timezone:      "INVALID",
+			expectedError: "unknown time zone INVALID",
+		},
+		{
+			name:     "Invalid timezone",
+			timezone: "America/New_York",
+		},
+	}
 
-	currentTime := time.Now()
-	assert.Equal(t, currentTime.Format(timezoneViper), currentTime.Format(timezone.String()))
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vip.Set(LogTimezoneKey, tc.timezone)
+			if tc.timeStampFormat != "" {
+				vip.Set(LogTimestampFormatKey, tc.timeStampFormat)
+			}
+
+			encoderConfig, err := createEncoderConfig()
+
+			if tc.expectedError != "" {
+				assert.Error(t, err)
+				assert.Equal(t, tc.expectedError, err.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, encoderConfig)
+			}
+		})
+	}
+}
+
+type loggerEncoderTestCases struct {
+	name          string
+	formatterType string
+	expectedError string
 }
 
 func TestGetLoggerEncoder(t *testing.T) {
-	logConfigText := `{
-		"log": {
-			"level": "info",
-			"timezone": "UTC",
-			"formatter": {
-				"type": "json",
-				"timestamp_format": "UTC"
-			},
-			"output": {
-				"type": "file",
-				"file_pattern": "/tmp/snet-daemon.%Y%m%d.log",
-				"current_link": "/tmp/snet-daemon.log",
-				"max_size_in_mb": 86400,
-				"max_age_in_days": 604800,
-				"rotation_count": 0
+	setupConfig()
+
+	testCases := []loggerEncoderTestCases{
+		{
+			name:          "Valid formatter type",
+			formatterType: "text",
+		},
+		{
+			name:          "Valid formatter type",
+			formatterType: "json",
+		},
+		{
+			name:          "Invalid formatter type",
+			formatterType: "invalid",
+			expectedError: "unsupported log formatter type: invalid",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vip.Set(LogFormatterTypeKey, tc.formatterType)
+
+			encoderConfig, err := createEncoderConfig()
+
+			assert.NoError(t, err)
+			assert.NotNil(t, encoderConfig)
+
+			encoder, err := createEncoder(encoderConfig)
+
+			if tc.expectedError != "" {
+				assert.Error(t, err)
+				assert.Equal(t, tc.expectedError, err.Error())
+
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, encoder)
 			}
-		}
-	}`
 
-	config.LoadConfig(logConfigText)
-	assert.NotNil(t, config.Vip())
+		})
+	}
+}
 
-	encoderConf, err := createEncoderConfig()
-	assert.NotNil(t, encoderConf)
-	assert.Nil(t, err)
-
-	encoder, err := createLoggerEncoder(encoderConf)
-	assert.NotNil(t, encoder)
+type logLevelTestCases struct {
+	name          string
+	inputLevel    string
+	levelZap      zapcore.Level
+	expectedError string
 }
 
 func TestGetLoggerLevel(t *testing.T) {
-	level := "info"
-	logLevel, err := getLoggerLevel(level)
-	assert.Nil(t, err)
-	assert.Equal(t, zap.InfoLevel, logLevel)
+	testCases := []logLevelTestCases{
+		{
+			name:       "Valid log level",
+			inputLevel: "debug",
+			levelZap:   zap.DebugLevel,
+		},
+		{
+			name:       "Valid log level",
+			inputLevel: "info",
+			levelZap:   zap.InfoLevel,
+		},
+		{
+			name:       "Valid log level",
+			inputLevel: "warn",
+			levelZap:   zap.WarnLevel,
+		},
+		{
+			name:       "Valid log level",
+			inputLevel: "error",
+			levelZap:   zap.ErrorLevel,
+		},
+		{
+			name:       "Valid log level",
+			inputLevel: "panic",
+			levelZap:   zap.PanicLevel,
+		},
+		{
+			name:          "Invalid log level",
+			inputLevel:    "invalid",
+			expectedError: "wrong string for level: invalid. Availible options: debug, info, warn, error, panic",
+		},
+	}
 
-	level = "debug"
-	logLevel, err = getLoggerLevel(level)
-	assert.Nil(t, err)
-	assert.Equal(t, zap.DebugLevel, logLevel)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			logLevel, err := getLoggerLevel(tc.inputLevel)
+			if tc.expectedError != "" {
+				assert.Error(t, err)
+				assert.Equal(t, tc.expectedError, err.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.levelZap, logLevel)
+			}
+		})
+	}
+}
 
-	level = "warn"
-	logLevel, err = getLoggerLevel(level)
-	assert.Nil(t, err)
-	assert.Equal(t, zap.WarnLevel, logLevel)
-
-	level = "error"
-	logLevel, err = getLoggerLevel(level)
-	assert.Nil(t, err)
-	assert.Equal(t, zap.ErrorLevel, logLevel)
-
-	level = "panic"
-	logLevel, err = getLoggerLevel(level)
-	assert.Nil(t, err)
-	assert.Equal(t, zap.PanicLevel, logLevel)
-
-	level = "wrong_level"
-	logLevel, err = getLoggerLevel(level)
-	assert.NotNil(t, err)
-	assert.Equal(t, "wrong string for level: wrong_level. Availible options: debug, info, warn, error, panic", err.Error())
+type formatFileNameTestCases struct {
+	name             string
+	filePatternName  string
+	expectedFileName string
+	expectedError    string
 }
 
 func TestFormatFileName(t *testing.T) {
 	mockTime := time.Date(2024, 7, 4, 12, 34, 56, 789000000, time.UTC)
 
-	filePatternName := "./snet-daemon.%Y-----%m-----%d--%M.log"
-	expectedFileName := "./snet-daemon.2024-----07-----04--34.log"
-	fileName, err := formatFileName(filePatternName, mockTime)
-	assert.Nil(t, err)
+	testCases := []formatFileNameTestCases{
+		{
+			name:             "Valid file pattern name",
+			filePatternName:  "./snet-daemon.%Y-----%m-----%d--%M.log",
+			expectedFileName: "./snet-daemon.2024-----07-----04--34.log",
+		},
+		{
+			name:            "Invalid file pattern name",
+			filePatternName: "./snet-daemon.%L-----%E-----%O--%A.log",
+			expectedError:   "invalid placeholder found in pattern: %L",
+		},
+	}
 
-	assert.Equal(t, expectedFileName, fileName)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fileName, err := formatFileName(tc.filePatternName, mockTime)
 
-	filePatternNameError := "./snet-daemon.%x%l%f.log"
-	_, err = formatFileName(filePatternNameError, mockTime)
-	assert.NotNil(t, err)
+			if tc.expectedError != "" {
+				assert.Error(t, err)
+				assert.Equal(t, tc.expectedError, err.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedFileName, fileName)
+			}
+		})
+	}
+}
+
+type createWriterSyncerTestCases struct {
+	name            string
+	outputType      interface{}
+	filePatternName string
+	expectedError   string
+}
+
+func TestCreateWriterSyncer(t *testing.T) {
+	setupConfig()
+
+	testCases := []createWriterSyncerTestCases{
+		{
+			name:            "Valid signle output type",
+			outputType:      "file",
+			filePatternName: "./snet-daemon.%Y%m%d.log",
+		},
+		{
+			name:            "Valid multiple output types",
+			outputType:      []string{"file", "stdout", "stderr"},
+			filePatternName: "./snet-daemon.%Y%m%d%M.log",
+		},
+		{
+			name:            "No output types",
+			outputType:      "",
+			filePatternName: "./snet-daemon.%Y%m%d%M.log",
+			expectedError:   "failed to read log.output.type from config: []",
+		},
+		{
+			name:            "Invalid single output type",
+			outputType:      "invalid",
+			filePatternName: "./snet-daemon.%Y%m%d%M.log",
+			expectedError:   "unsupported log output type: invalid",
+		},
+		{
+			name:            "Invalid multiple output types",
+			outputType:      []string{"invalid1", "invalid2"},
+			filePatternName: "./snet-daemon.%Y%m%d%M.log",
+			expectedError:   "unsupported log output type: invalid1",
+		},
+		{
+			name:            "Invalid file pattern name",
+			outputType:      "file",
+			filePatternName: "./snet-daemon.%L.log",
+			expectedError:   "failed to create file writer for logger, invalid placeholder found in pattern: %L",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			vip.Set(LogOutputTypeKey, tc.outputType)
+			vip.Set(LogOutputFilePatternKey, tc.filePatternName)
+			ws, err := createWriterSyncer()
+
+			if tc.expectedError != "" {
+				assert.NotNil(t, err)
+				assert.Equal(t, tc.expectedError, err.Error())
+			} else {
+				assert.Nil(t, err)
+				assert.NotNil(t, ws)
+			}
+		})
+	}
+}
+
+type configTestCase struct {
+	name        string
+	config      map[string]interface{}
+	expectPanic bool
+	expectedLog *zap.Logger
+}
+
+func TestInitialize(t *testing.T) {
+	// Setup default configuration once
+	setupConfig()
+
+	testCases := []configTestCase{
+		{
+			name: "Valid config",
+			config: map[string]interface{}{
+				"log.level":                      "info",
+				"log.timezone":                   "UTC",
+				"log.formatter.type":             "json",
+				"log.formatter.timestamp_format": "UTC",
+				"log.output.type":                []string{"file", "stdout"},
+				"log.output.file_pattern":        "/tmp/snet-daemon.%Y%m%d.log",
+				"log.output.current_link":        "/tmp/snet-daemon.log",
+				"log.output.max_size_in_mb":      86400,
+				"log.output.max_age_in_days":     604800,
+				"log.output.rotation_count":      0,
+			},
+			expectPanic: false,
+			expectedLog: zap.L(),
+		},
+		{
+			name: "Invalid config - invalid level",
+			config: map[string]interface{}{
+				"log.level":                      "INVALID",
+				"log.timezone":                   "UTC",
+				"log.formatter.type":             "json",
+				"log.formatter.timestamp_format": "UTC",
+				"log.output.type":                "file",
+				"log.output.file_pattern":        "/tmp/snet-daemon.%Y%m%d.log",
+				"log.output.current_link":        "/tmp/snet-daemon.log",
+				"log.output.max_size_in_mb":      86400,
+				"log.output.max_age_in_days":     604800,
+				"log.output.rotation_count":      0,
+			},
+			expectPanic: true,
+		},
+		{
+			name: "Invalid config - invalid formatter type",
+			config: map[string]interface{}{
+				"log.level":                      "info",
+				"log.timezone":                   "UTC",
+				"log.formatter.type":             "INVALID",
+				"log.formatter.timestamp_format": "UTC",
+				"log.output.type":                "file",
+				"log.output.file_pattern":        "/tmp/snet-daemon.%Y%m%d.log",
+				"log.output.current_link":        "/tmp/snet-daemon.log",
+				"log.output.max_size_in_mb":      86400,
+				"log.output.max_age_in_days":     604800,
+				"log.output.rotation_count":      0,
+			},
+			expectPanic: true,
+		},
+		{
+			name: "Invalid config - invalid output type",
+			config: map[string]interface{}{
+				"log.level":                      "info",
+				"log.timezone":                   "UTC",
+				"log.formatter.type":             "json",
+				"log.formatter.timestamp_format": "UTC",
+				"log.output.type":                []string{"INVALID"},
+				"log.output.file_pattern":        "/tmp/snet-daemon.%Y%m%d.log",
+				"log.output.current_link":        "/tmp/snet-daemon.log",
+				"log.output.max_size_in_mb":      86400,
+				"log.output.max_age_in_days":     604800,
+				"log.output.rotation_count":      0,
+			},
+			expectPanic: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set up the configuration for each test case
+			for key, value := range tc.config {
+				vip.Set(key, value)
+			}
+
+			if tc.expectPanic {
+				assert.Panics(t, func() {
+					Initialize()
+				}, "expected panic but did not get one")
+			} else {
+				Initialize()
+				assert.NotNil(t, zap.L(), "Logger should not be nil")
+			}
+		})
+	}
 }

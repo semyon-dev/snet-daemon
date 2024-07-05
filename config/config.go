@@ -99,7 +99,7 @@ const (
 		"timezone": "UTC",
 		"formatter": {
 			"type": "text",
-			"timestamp_format": "2006-01-02"
+			"timestamp_format": "2006-01-02T15:04:05.999Z07:00"
 		},
 		"output": {
 			"type": "file",
@@ -182,6 +182,12 @@ func init() {
 	SetDefaultFromConfig(vip, defaults)
 
 	vip.AddConfigPath(".")
+}
+
+// SetVip allows setting a new Viper instance.
+// This is useful for testing, where you may want to change the configuration.
+func SetVip(newVip *viper.Viper) {
+	vip = newVip
 }
 
 // ReadConfigFromJsonString function reads settigs from json string to the
