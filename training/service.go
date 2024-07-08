@@ -244,6 +244,9 @@ func (service ModelService) updateModelDetails(request *UpdateModelRequest, resp
 		data.Description = request.UpdateModelDetails.Description
 
 		err = service.storage.Put(key, data)
+		if err != nil {
+			zap.L().Error("Error in putting data in user storage", zap.Error(err))
+		}
 		//get the difference of all the addresses b/w old and new
 		updatedAddresses := difference(oldAddresses, latestAddresses)
 		for _, address := range updatedAddresses {
@@ -256,8 +259,9 @@ func (service ModelService) updateModelDetails(request *UpdateModelRequest, resp
 				modelUserData.ModelIds = remove(modelUserData.ModelIds, request.UpdateModelDetails.ModelId)
 			}
 			err = service.userStorage.Put(modelUserKey, modelUserData)
-			zap.L().Error(err.Error())
-
+			if err != nil {
+				zap.L().Error("Error in putting data in storage", zap.Error(err))
+			}
 		}
 
 	}
@@ -365,7 +369,7 @@ func (service ModelService) getModelDataForUpdate(request *UpdateModelRequest) (
 	ok := false
 
 	if data, ok, err = service.storage.Get(key); err != nil || !ok {
-		zap.L().Error("nable to retrieve model data from storage", zap.String("Model Id", key.ModelId))
+		zap.L().Warn("unable to retrieve model data from storage", zap.String("Model Id", key.ModelId), zap.Error(err))
 	}
 	return
 }
@@ -463,7 +467,7 @@ func (service ModelService) CreateModel(c context.Context, request *CreateModelR
 			fmt.Errorf("unable to create Model: %v", err)
 	}
 	if request.GetModelDetails().GrpcServiceName == "" || request.GetModelDetails().GrpcMethodName == "" {
-		zap.L().Error("Errot in getting grpc service name", zap.Error(err))
+		zap.L().Error("Error in getting grpc service name", zap.Error(err))
 		return &ModelDetailsResponse{Status: Status_ERRORED},
 			fmt.Errorf("invalid request, no GrpcServiceName or GrpcMethodName provided  , %v", err)
 	}

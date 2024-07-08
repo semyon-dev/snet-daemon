@@ -363,7 +363,7 @@ func setGroup(metaData *ServiceMetadata) (err error) {
 	}
 	err = fmt.Errorf("group name %v in config is invalid, "+
 		"there was no group found with this name in the metadata", groupName)
-	zap.L().Error(err.Error())
+	zap.L().Error("Error in set group", zap.Error(err))
 	return err
 }
 
@@ -378,7 +378,7 @@ func setDefaultPricing(metaData *ServiceMetadata) (err error) {
 		}
 	}
 	err = fmt.Errorf("MetaData does not have the default pricing set ")
-	zap.L().Error(err.Error())
+	zap.L().Warn("Error in set default pricing", zap.Error(err))
 	return err
 }
 

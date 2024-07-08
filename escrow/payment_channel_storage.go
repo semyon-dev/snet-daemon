@@ -112,7 +112,7 @@ func NewBlockchainChannelReader(processor *blockchain.Processor, cfg *viper.Vipe
 func (reader *BlockchainChannelReader) GetChannelStateFromBlockchain(key *PaymentChannelKey) (channel *PaymentChannelData, ok bool, err error) {
 	ch, ok, err := reader.readChannelFromBlockchain(key.ID)
 	if err != nil || !ok {
-		zap.L().Debug(err.Error())
+		zap.L().Warn("Unsuccessful GetChannelStateFromBlockchain", zap.Error(err), zap.Bool("ok", ok))
 		return
 	}
 
