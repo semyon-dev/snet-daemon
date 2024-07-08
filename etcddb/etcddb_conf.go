@@ -6,7 +6,6 @@ import (
 
 	"github.com/singnet/snet-daemon/blockchain"
 	"github.com/singnet/snet-daemon/config"
-
 	"github.com/spf13/viper"
 )
 

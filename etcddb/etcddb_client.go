@@ -14,7 +14,6 @@ import (
 	"github.com/singnet/snet-daemon/storage"
 	"github.com/singnet/snet-daemon/utils"
 	"go.uber.org/zap"
-
 	"github.com/golang-collections/collections/set"
 	"github.com/spf13/viper"
 	clientv3 "go.etcd.io/etcd/client/v3"

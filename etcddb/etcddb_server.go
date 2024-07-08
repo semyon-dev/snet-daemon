@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"time"
-
 	"github.com/singnet/snet-daemon/config"
-
 	"github.com/spf13/viper"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
