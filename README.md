@@ -327,9 +327,8 @@ cd snet-daemon
 ./scripts/install
 ```
 
-* Build snet-daemon. Please note using ldflags, the latest tagged version , sha1 revision and the build time are set as
-  part of the build.
-  You need to pass the version as shown in the example below
+* Build snet-daemon. Please note using ldflags, the latest tagged version, sha1 revision and the build time are set as
+  part of the build. You need to pass the version as shown in the example below:
 
 ```bash
 ./scripts/build <linux/windows/darwin> <amd64/arm/arm64> <version>
@@ -341,12 +340,14 @@ Example:
 ./scripts/build linux amd64 v5.1.4
 ```
 
+The final binaries will be in the `/build` folder.
+
 #### Multi-compiling
 
 If you want to build daemon for several platforms, run `./scripts/build-all <version>` instead
 of `./scripts/build`.
 
-You can edit the script to choose the specific platforms, but by default it will build for Linux, OSX, and Windows.
+You can edit the script to choose the specific platforms, but by default it will build for Linux, Darwin (OSX), and Windows.
 
 #### Unit Testing
 
@@ -360,7 +361,7 @@ go test ./...
 
 ### Blockchain network config
 
-You can update the registry address or ethereum_json_rpc_endpoint in `resources/blockchain_network_config.json` before ./scripts/build.
+You can edit `ethereum_json_rpc_endpoint` in `resources/blockchain_network_config.json` before ./scripts/build.
 
 ### Signatures in Daemon
 
