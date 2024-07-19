@@ -1,5 +1,6 @@
 # SingularityNET Daemon
 
+![ci/cd build](https://github.com/singnet/snet-daemon/actions/workflows/build.yml/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/singnet/snet-daemon/badge.svg)](https://coveralls.io/github/singnet/snet-daemon)
 
 Users interested in deploying SingularityNET services should use this daemon
@@ -11,57 +12,16 @@ The SNET Daemon interacts with the Multi Party Escrow to facilitate authorizatio
 passthrough for making API calls to the service.The daemon is the endpoint a client will submit requests to, and they
 are then passed to the service after validation by the daemon.
 
-## Channel Claim command
+# Table of contents
+1. [Usage](#use)
+2. [Configuration](#configuration)
+    1. [Sub build](#build)
+3. [Build and development](#build)
 
-Gets the latest channel state of the Channel updated in ETCD by the daemons of the same group and then increments the
-nonce of the channel.
-It then sends and ON-Chain transaction to claim funds. The daemons continue their work independently without any
-confirmation from the treasurer on the blockchain.
-
-## Releases
+## Install and use <a name="use"></a>
 
 **Usage without compiling:**
 Precompiled binaries are published with each [release](https://github.com/singnet/snet-daemon/releases).
-
-## Development
-
-These instructions are intended to facilitate the development and testing of SingularityNET Daemon.
-
-### Prerequisites and dependencies
-
-* [Go 1.22+](https://golang.org/dl/)
-* [Protoc 25.0+](https://github.com/protocolbuffers/protobuf/releases)
-
-**Protoc (libprotoc), golang and $GOPATH/bin should be in environment variables.**
-
-### Installing
-
-* Clone the git repository (for example $GOPATH/src/github.com/singnet/)
-
-```bash
-$ git clone git@github.com:singnet/snet-daemon.git
-$ cd snet-daemon
-```
-
-* Install dependencies and generate bindings
-
-```bash
-$ ./scripts/install
-```
-
-* Build snet-daemon. Please note using ldflags, the latest tagged version , sha1 revision and the build time are set as
-  part of the build.
-  You need to pass the version as shown in the example below
-
-```bash
-$ ./scripts/build <linux/windows/darwin> <amd64/arm/arm64> <version>
-```
-
-Example:
-
-```bash
-$ ./scripts/build linux amd64 v5.1.2
-```
 
 #### Generate default minimum config file for snet-daemon
 
@@ -88,11 +48,6 @@ You can edit the script to choose the specific platforms, but by default it will
 $ ../build/snetd-linux-amd64
 ```
 
-### Signatures in Daemon
-
-[Payment](/escrow/README.md).
-[Configuration](/configuration_service/README.md).
-
 ### Main commands
 
 * Start ```snet-daemon```
@@ -100,6 +55,13 @@ $ ../build/snetd-linux-amd64
 ```bash
 $ ./snetd-linux-amd64
 ```
+
+## Channel Claim command
+
+Gets the latest channel state of the Channel updated in ETCD by the daemons of the same group and then increments the
+nonce of the channel.
+It then sends and ON-Chain transaction to claim funds. The daemons continue their work independently without any
+confirmation from the treasurer on the blockchain.
 
 * Claim funds from the channel
 
@@ -148,7 +110,7 @@ or
 $ go test ./...
 ```
 
-### Configuration
+### Configuration <a name="configuration"></a>
 
 Configuration file is a main source of the configuration. Some properties
 can be set via environment variables or command line parameters see [table
@@ -158,10 +120,6 @@ use configuration file in JSON format `snetd.config.json` but other formats are
 also supported via [Viper](https://github.com/spf13/viper). Use `snet init-full`
 command to save configuration file with default values. Following
 configuration properties can be set using configuration file.
-
-#### Blockchain network config
-
-You can update the registry address or ethereum_json_rpc_endpoint in `resources/blockchain_network_config.json` before ./scripts/build.
 
 #### Main properties
 
@@ -367,6 +325,54 @@ This options are less frequently needed.
 | `ssl_key`                    | `SNET_SSL_KEY`                    | `--ssl-key`           |
 
 [service-configuration-metadata]: https://github.com/singnet/wiki/blob/master/multiPartyEscrowContract/MPEServiceMetadata.md
+
+## Build & Development <a name="build"></a> 
+
+These instructions are intended to facilitate the development and testing of SingularityNET Daemon.
+
+### Prerequisites and dependencies
+
+* [Go 1.22+](https://golang.org/dl/)
+* [Protoc 25.0+](https://github.com/protocolbuffers/protobuf/releases)
+
+**Protoc (libprotoc), golang and $GOPATH/bin should be in environment variables.**
+
+### Installing
+
+* Clone the git repository (for example $GOPATH/src/github.com/singnet/)
+
+```bash
+$ git clone git@github.com:singnet/snet-daemon.git
+$ cd snet-daemon
+```
+
+* Install dependencies and generate bindings
+
+```bash
+$ ./scripts/install
+```
+
+* Build snet-daemon. Please note using ldflags, the latest tagged version , sha1 revision and the build time are set as
+  part of the build.
+  You need to pass the version as shown in the example below
+
+```bash
+$ ./scripts/build <linux/windows/darwin> <amd64/arm/arm64> <version>
+```
+ 
+Example:
+
+```bash
+$ ./scripts/build linux amd64 v5.1.2
+```
+
+#### Blockchain network config
+
+You can update the registry address or ethereum_json_rpc_endpoint in `resources/blockchain_network_config.json` before ./scripts/build.
+
+### Signatures in Daemon
+
+[Payment](/escrow/README.md).
 
 ## Versioning
 
