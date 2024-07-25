@@ -36,12 +36,18 @@ $GitHash = git rev-parse HEAD
 
 # Build with Go
 $GOOS = $args[0]
-$GOARCH = $args[1]
 $OutputFile = "snetd-$BuildName"
+
 if ($GOOS -eq "windows") {
     $OutputFile += ".exe"
 }
-go build -ldflags "-X github.com/singnet/snet-daemon/config.sha1Revision=$GitHash -X github.com/singnet/snet-daemon/config.versionTag=$($args[2]) -X github.com/singnet/snet-daemon/config.buildTime=$Now -X 'github.com/singnet/snet-daemon/config.networkIdNameMapping=$NetworkJson'" -o (Join-Path $BuildDirectory $OutputFile) "snetd/main.go"
+
+go build -ldflags "
+-X google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=ignore
+-X github.com/singnet/snet-daemon/config.sha1Revision=$GitHash
+-X github.com/singnet/snet-daemon/config.versionTag=$($args[2])
+-X github.com/singnet/snet-daemon/config.buildTime=$Now
+-X 'github.com/singnet/snet-daemon/config.networkIdNameMapping=$NetworkJson'" -o (Join-Path $BuildDirectory $OutputFile) "snetd/main.go"
 
 # Return to previous directory
 Pop-Location
