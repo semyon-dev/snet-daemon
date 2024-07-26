@@ -24,7 +24,7 @@ jobs:
 
       - name: install protoc (protobuf)
         uses: arduino/setup-protoc@v3
-
+          
       - name: chmod +x
         run: chmod +x ./scripts/install_deps && chmod +x ./scripts/build
 
