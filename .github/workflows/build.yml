@@ -10,7 +10,7 @@ env:
   GOLANG_PROTOBUF_REGISTRATION_CONFLICT: ignore
 
 jobs:
-  run_build:
+  build:
     runs-on: ubuntu-latest
     steps:
 
@@ -24,7 +24,10 @@ jobs:
 
       - name: install protoc (protobuf)
         uses: arduino/setup-protoc@v3
-          
+        with:
+          version: v27.2
+          include-pre-releases: false
+
       - name: chmod +x
         run: chmod +x ./scripts/install_deps && chmod +x ./scripts/build
 
