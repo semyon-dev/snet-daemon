@@ -249,16 +249,15 @@ func (metaData ServiceMetadata) GetDefaultPricing() Pricing {
 func ServiceMetaData() *ServiceMetadata {
 	var metadata *ServiceMetadata
 	var err error
-	if config.GetBool(config.BlockchainEnabledKey) {
-		ipfsHash := string(getServiceMetaDataUrifromRegistry())
-		metadata, err = GetServiceMetaDataFromIPFS(FormatHash(ipfsHash))
-		if err != nil {
-
-			zap.L().Panic("error on determining service metadata from file", zap.Error(err))
-		}
-	} else {
-		metadata = &ServiceMetadata{Encoding: "proto", ServiceType: "grpc"}
+	//if config.GetBool(config.BlockchainEnabledKey) {
+	ipfsHash := string(getServiceMetaDataUrifromRegistry())
+	metadata, err = GetServiceMetaDataFromIPFS(FormatHash(ipfsHash))
+	if err != nil {
+		zap.L().Panic("error on determining service metadata from file", zap.Error(err))
 	}
+	//} else {
+	//	metadata = &ServiceMetadata{Encoding: "proto", ServiceType: "grpc"}
+	//}
 	return metadata
 }
 

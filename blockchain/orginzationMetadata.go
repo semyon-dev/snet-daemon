@@ -163,12 +163,12 @@ func getDaemonGroup(metaData OrganizationMetaData) (group *Group, err error) {
 func GetOrganizationMetaData() *OrganizationMetaData {
 	var metadata *OrganizationMetaData
 	var err error
-	if config.GetBool(config.BlockchainEnabledKey) {
-		ipfsHash := string(getMetaDataURI())
-		metadata, err = GetOrganizationMetaDataFromIPFS(FormatHash(ipfsHash))
-	} else {
-		metadata = &OrganizationMetaData{daemonGroup: &Group{}}
-	}
+	//if config.GetBool(config.BlockchainEnabledKey) {
+	ipfsHash := string(getMetaDataURI())
+	metadata, err = GetOrganizationMetaDataFromIPFS(FormatHash(ipfsHash))
+	//} else {
+	//	metadata = &OrganizationMetaData{daemonGroup: &Group{}}
+	//}
 	if err != nil {
 		zap.L().Panic("error on retrieving / parsing organization metadata from block chain", zap.Error(err))
 	}
