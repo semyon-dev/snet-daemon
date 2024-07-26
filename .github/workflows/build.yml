@@ -27,6 +27,9 @@ jobs:
           sudo apt update
           sudo apt install protobuf-compiler
 
+      - name: chmod +x
+        run: chmod +x ./scripts/install_deps && chmod +x ./scripts/build
+
       - name: install dependencies
         run: ./scripts/install_deps
 
