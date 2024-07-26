@@ -22,10 +22,8 @@ jobs:
         with:
           go-version: '1.22.5'
 
-      - name: install protobuf
-        run: |
-          sudo apt update
-          sudo apt install protobuf-compiler
+      - name: install protoc (protobuf)
+        uses: arduino/setup-protoc@v3
 
       - name: chmod +x
         run: chmod +x ./scripts/install_deps && chmod +x ./scripts/build
