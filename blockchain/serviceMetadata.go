@@ -255,6 +255,7 @@ func ServiceMetaData() *ServiceMetadata {
 	if err != nil {
 		zap.L().Panic("error on determining service metadata from file", zap.Error(err))
 	}
+	zap.L().Debug("service_type: " + metadata.GetServiceType())
 	//} else {
 	//	metadata = &ServiceMetadata{Encoding: "proto", ServiceType: "grpc"}
 	//}

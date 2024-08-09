@@ -47,6 +47,10 @@ func GetEtcdClientConf(vip *viper.Viper, metaData *blockchain.OrganizationMetaDa
 		conf.ConnectionTimeout = confFromVip.ConnectionTimeout
 	}
 
+	if len(confFromVip.Endpoints) != 0 {
+		conf.Endpoints = confFromVip.Endpoints
+	}
+
 	return
 }
 
