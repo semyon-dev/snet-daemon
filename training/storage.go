@@ -266,6 +266,66 @@ func (storage *PendingModelStorage) Put(key *PendingModelKey, state *PendingMode
 	return storage.delegate.Put(key, state)
 }
 
+func (pendingStorage *PendingModelStorage) AddPendingModelId(key *PendingModelKey, modelId string) (err error) {
+	typedUpdateFunc := func(conditionValues []storage.TypedKeyValueData) (update []storage.TypedKeyValueData, ok bool, err error) {
+		if len(conditionValues) != 1 || conditionValues[0].Key != key {
+			return nil, false, fmt.Errorf("unexpected condition values or missing key")
+		}
+
+		// Fetch the current list of pending model IDs from the storage
+		currentValue, ok, err := pendingStorage.delegate.Get(key)
+		if err != nil {
+			return nil, false, err
+		}
+
+		var pendingModelData *PendingModelData
+		if currentValue == nil {
+			pendingModelData = &PendingModelData{ModelIDs: make([]string, 0, 100)}
+		} else {
+			pendingModelData = currentValue.(*PendingModelData)
+		}
+
+		// Check if the modelId already exists
+		for _, currentModelId := range pendingModelData.ModelIDs {
+			if currentModelId == modelId {
+				// If the model ID already exists, no update is needed
+				return nil, false, nil
+			}
+		}
+
+		// Add the new model ID to the list
+		pendingModelData.ModelIDs = append(pendingModelData.ModelIDs, modelId)
+
+		// Prepare the updated values for the transaction
+		newValues := []storage.TypedKeyValueData{
+			{
+				Key:     key,
+				Value:   pendingModelData,
+				Present: true,
+			},
+		}
+
+		return newValues, true, nil
+	}
+
+	request := storage.TypedCASRequest{
+		ConditionKeys:           []any{key},
+		RetryTillSuccessOrError: true,
+		Update:                  typedUpdateFunc,
+	}
+
+	// Execute the transaction
+	ok, err := pendingStorage.delegate.ExecuteTransaction(request)
+	if err != nil {
+		return fmt.Errorf("transaction execution failed: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("transaction was not successful")
+	}
+
+	return nil
+}
+
 func (storage *PendingModelStorage) PutIfAbsent(key *PendingModelKey, state *PendingModelData) (ok bool, err error) {
 	return storage.delegate.PutIfAbsent(key, state)
 }
@@ -300,6 +360,66 @@ func (storage *PublicModelStorage) GetAll() (states []*PublicModelData, err erro
 
 func (storage *PublicModelStorage) Put(key *PublicModelKey, state *PublicModelData) (err error) {
 	return storage.delegate.Put(key, state)
+}
+
+func (publicStorage *PublicModelStorage) AddPublicModelId(key *PublicModelKey, modelId string) (err error) {
+	typedUpdateFunc := func(conditionValues []storage.TypedKeyValueData) (update []storage.TypedKeyValueData, ok bool, err error) {
+		if len(conditionValues) != 1 || conditionValues[0].Key != key {
+			return nil, false, fmt.Errorf("unexpected condition values or missing key")
+		}
+
+		// Fetch the current list of public model IDs from the storage
+		currentValue, ok, err := publicStorage.delegate.Get(key)
+		if err != nil {
+			return nil, false, err
+		}
+
+		var publicModelData *PublicModelData
+		if currentValue == nil {
+			publicModelData = &PublicModelData{ModelIDs: make([]string, 0, 100)}
+		} else {
+			publicModelData = currentValue.(*PublicModelData)
+		}
+
+		// Check if the modelId already exists
+		for _, currentModelId := range publicModelData.ModelIDs {
+			if currentModelId == modelId {
+				// If the model ID already exists, no update is needed
+				return nil, false, nil
+			}
+		}
+
+		// Add the new model ID to the list
+		publicModelData.ModelIDs = append(publicModelData.ModelIDs, modelId)
+
+		// Prepare the updated values for the transaction
+		newValues := []storage.TypedKeyValueData{
+			{
+				Key:     key,
+				Value:   publicModelData,
+				Present: true,
+			},
+		}
+
+		return newValues, true, nil
+	}
+
+	request := storage.TypedCASRequest{
+		ConditionKeys:           []any{key},
+		RetryTillSuccessOrError: true,
+		Update:                  typedUpdateFunc,
+	}
+
+	// Execute the transaction
+	ok, err := publicStorage.delegate.ExecuteTransaction(request)
+	if err != nil {
+		return fmt.Errorf("transaction execution failed: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("transaction was not successful")
+	}
+
+	return nil
 }
 
 func (storage *PublicModelStorage) PutIfAbsent(key *PublicModelKey, state *PublicModelData) (ok bool, err error) {

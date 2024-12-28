@@ -488,16 +488,18 @@ func (ds *DaemonService) getServiceClient() (conn *grpc.ClientConn, client Model
 	return
 }
 
-func (ds *DaemonService) createModelDetails(request *NewModelRequest, response *ModelID) (data *ModelData, err error) {
+func (ds *DaemonService) createModelDetails(request *NewModelRequest, response *ModelID) (*ModelData, error) {
 	key := ds.buildModelKey(response.ModelId)
-	data = ds.getModelDataToCreate(request, response)
+	data := ds.getModelDataToCreate(request, response)
+
 	//store the model details in etcd
 	zap.L().Debug("createModelDetails", zap.Any("key", key))
-	err = ds.storage.Put(key, data)
+	err := ds.storage.Put(key, data)
 	if err != nil {
 		zap.L().Error("can't put model in etcd", zap.Error(err))
-		return
+		return nil, err
 	}
+
 	// for every accessible address in the list, store the user address and all the model Ids associated with it
 	for _, address := range data.AuthorizedAddresses {
 		userKey := getModelUserKey(key, address)
@@ -506,11 +508,12 @@ func (ds *DaemonService) createModelDetails(request *NewModelRequest, response *
 		err = ds.userStorage.Put(userKey, userData)
 		if err != nil {
 			zap.L().Error("can't put in user storage", zap.Error(err))
-			return
+			return nil, err
 		}
 		zap.L().Debug("creating training model", zap.String("userKey", userKey.String()), zap.String("userData", userData.String()))
 	}
-	return
+
+	return data, nil
 }
 
 func getModelUserKey(key *ModelKey, address string) *ModelUserKey {
@@ -723,12 +726,12 @@ func (ds *DaemonService) getModelData(modelID string) (data *ModelData, err erro
 	return
 }
 
-func (ds *DaemonService) GetAllModels(c context.Context, request *AllModelsRequest) (response *ModelsResponse, err error) {
+func (ds *DaemonService) GetAllModels(c context.Context, request *AllModelsRequest) (*ModelsResponse, error) {
 	if request == nil || request.Authorization == nil {
 		return &ModelsResponse{},
 			fmt.Errorf("invalid request, no Authorization provided ")
 	}
-	if err = ds.verifySignature(request.Authorization); err != nil {
+	if err := ds.verifySignature(request.Authorization); err != nil {
 		return &ModelsResponse{},
 			fmt.Errorf("unable to access model: %v", err)
 	}
@@ -737,7 +740,7 @@ func (ds *DaemonService) GetAllModels(c context.Context, request *AllModelsReque
 	//		fmt.Errorf("Invalid request, no GrpcMethodName or GrpcServiceName provided")
 	//}
 
-	key := &ModelUserKey{
+	userModelKey := &ModelUserKey{
 		OrganizationId: config.GetString(config.OrganizationId),
 		ServiceId:      config.GetString(config.ServiceId),
 		GroupId:        ds.organizationMetaData.GetGroupIdString(),
@@ -747,8 +750,31 @@ func (ds *DaemonService) GetAllModels(c context.Context, request *AllModelsReque
 	}
 
 	modelDetailsArray := make([]*ModelResponse, 0)
-	if data, ok, err := ds.userStorage.Get(key); data != nil && ok && err == nil {
+	if data, ok, err := ds.userStorage.Get(userModelKey); data != nil && ok && err == nil {
 		for _, modelId := range data.ModelIds {
+			modelKey := &ModelKey{
+				OrganizationId: config.GetString(config.OrganizationId),
+				ServiceId:      config.GetString(config.ServiceId),
+				GroupId:        ds.organizationMetaData.GetGroupIdString(),
+				//GRPCMethodName:  request.GrpcMethodName,
+				//GRPCServiceName: request.GrpcServiceName,
+				ModelId: modelId,
+			}
+			if modelData, modelOk, modelErr := ds.storage.Get(modelKey); modelOk && modelData != nil && modelErr == nil {
+				boModel := convertModelDataToBO(modelData)
+				modelDetailsArray = append(modelDetailsArray, boModel)
+			}
+		}
+	}
+
+	publicModelKey := &PublicModelKey{
+		OrganizationId: config.GetString(config.OrganizationId),
+		ServiceId:      config.GetString(config.ServiceId),
+		GroupId:        ds.organizationMetaData.GetGroupIdString(),
+	}
+
+	if data, ok, err := ds.publicStorage.Get(publicModelKey); data != nil && ok && err == nil {
+		for _, modelId := range data.ModelIDs {
 			modelKey := &ModelKey{
 				OrganizationId: config.GetString(config.OrganizationId),
 				ServiceId:      config.GetString(config.ServiceId),
@@ -768,10 +794,7 @@ func (ds *DaemonService) GetAllModels(c context.Context, request *AllModelsReque
 		zap.L().Debug("Model", zap.String("Name", model.Name))
 	}
 
-	response = &ModelsResponse{
-		ListOfModels: modelDetailsArray,
-	}
-	return
+	return &ModelsResponse{ListOfModels: modelDetailsArray}, nil
 }
 
 func (ds *DaemonService) getModelDataToCreate(request *NewModelRequest, response *ModelID) (data *ModelData) {
