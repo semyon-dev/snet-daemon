@@ -20,6 +20,10 @@ type PendingModelStorage struct {
 	delegate storage.TypedAtomicStorage
 }
 
+type PublicModelStorage struct {
+	delegate storage.TypedAtomicStorage
+}
+
 func NewUserModelStorage(atomicStorage storage.AtomicStorage) *ModelUserStorage {
 	prefixedStorage := storage.NewPrefixedAtomicStorage(atomicStorage, "/model-user/userModelStorage")
 	userModelStorage := storage.NewTypedAtomicStorageImpl(
@@ -45,6 +49,15 @@ func NewPendingModelStorage(atomicStorage storage.AtomicStorage) *PendingModelSt
 		reflect.TypeOf(PendingModelData{}),
 	)
 	return &PendingModelStorage{delegate: pendingModelStorage}
+}
+
+func NewPublicModelStorage(atomicStorage storage.AtomicStorage) *PublicModelStorage {
+	prefixedStorage := storage.NewPrefixedAtomicStorage(atomicStorage, "/model-user/publicModelStorage")
+	publicModelStorage := storage.NewTypedAtomicStorageImpl(
+		prefixedStorage, serializePublicModelKey, reflect.TypeOf(PublicModelKey{}), utils.Serialize, utils.Deserialize,
+		reflect.TypeOf(PublicModelData{}),
+	)
+	return &PublicModelStorage{delegate: publicModelStorage}
 }
 
 type ModelKey struct {
@@ -135,6 +148,24 @@ type PendingModelData struct {
 
 // PendingModelData maintain the list of all modelIds that have TRAINING\VALIDATING status
 func (data *PendingModelData) String() string {
+	return fmt.Sprintf("{DATA:%v}", data.ModelIDs)
+}
+
+type PublicModelKey struct {
+	OrganizationId string
+	ServiceId      string
+	GroupId        string
+}
+
+func (key *PublicModelKey) String() string {
+	return fmt.Sprintf("{ID:%v|%v|%v}", key.OrganizationId, key.ServiceId, key.GroupId)
+}
+
+type PublicModelData struct {
+	ModelIDs []string
+}
+
+func (data *PublicModelData) String() string {
 	return fmt.Sprintf("{DATA:%v}", data.ModelIDs)
 }
 
@@ -241,5 +272,41 @@ func (storage *PendingModelStorage) PutIfAbsent(key *PendingModelKey, state *Pen
 
 func (storage *PendingModelStorage) CompareAndSwap(key *PendingModelKey, prevState *PendingModelData,
 	newState *PendingModelData) (ok bool, err error) {
+	return storage.delegate.CompareAndSwap(key, prevState, newState)
+}
+
+func serializePublicModelKey(key any) (serialized string, err error) {
+	pendingModelKey := key.(*PublicModelKey)
+	return pendingModelKey.String(), nil
+}
+
+func (storage *PublicModelStorage) Get(key *PublicModelKey) (state *PublicModelData, ok bool, err error) {
+	value, ok, err := storage.delegate.Get(key)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
+
+	return value.(*PublicModelData), ok, err
+}
+
+func (storage *PublicModelStorage) GetAll() (states []*PublicModelData, err error) {
+	values, err := storage.delegate.GetAll()
+	if err != nil {
+		return
+	}
+
+	return values.([]*PublicModelData), nil
+}
+
+func (storage *PublicModelStorage) Put(key *PublicModelKey, state *PublicModelData) (err error) {
+	return storage.delegate.Put(key, state)
+}
+
+func (storage *PublicModelStorage) PutIfAbsent(key *PublicModelKey, state *PublicModelData) (ok bool, err error) {
+	return storage.delegate.PutIfAbsent(key, state)
+}
+
+func (storage *PublicModelStorage) CompareAndSwap(key *PublicModelKey, prevState *PublicModelData,
+	newState *PublicModelData) (ok bool, err error) {
 	return storage.delegate.CompareAndSwap(key, prevState, newState)
 }

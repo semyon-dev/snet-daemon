@@ -58,6 +58,7 @@ type DaemonService struct {
 	storage              *ModelStorage
 	userStorage          *ModelUserStorage
 	pendingStorage       *PendingModelStorage
+	publicStorage        *PublicModelStorage
 	serviceUrl           string
 	trainingMetadata     *TrainingMetadata
 	methodsMetadata      map[string]*MethodMetadata
@@ -70,6 +71,7 @@ func NewDaemonsService(
 	storage *ModelStorage,
 	userStorage *ModelUserStorage,
 	pendingStorage *PendingModelStorage,
+	publicStorage *PublicModelStorage,
 	serviceUrl string,
 	trainingMedadata *TrainingMetadata,
 	methodsMetadata map[string]*MethodMetadata,
@@ -81,6 +83,7 @@ func NewDaemonsService(
 		storage:              storage,
 		userStorage:          userStorage,
 		pendingStorage:       pendingStorage,
+		publicStorage:        publicStorage,
 		serviceUrl:           serviceUrl,
 		trainingMetadata:     trainingMedadata,
 		methodsMetadata:      methodsMetadata,
@@ -903,7 +906,8 @@ func (ds *DaemonService) GetModel(c context.Context, request *CommonRequest) (re
 
 // NewTrainingService daemon self server
 func NewTrainingService(channelService escrow.PaymentChannelService, serMetaData *blockchain.ServiceMetadata,
-	orgMetadata *blockchain.OrganizationMetaData, storage *ModelStorage, userStorage *ModelUserStorage, pendingStorage *PendingModelStorage) DaemonServer {
+	orgMetadata *blockchain.OrganizationMetaData, storage *ModelStorage, userStorage *ModelUserStorage,
+	pendingStorage *PendingModelStorage, publicStorage *PublicModelStorage) DaemonServer {
 
 	linkerFiles := getFileDescriptors(serMetaData.ProtoFiles)
 	serMetaData.ProtoDescriptors = linkerFiles
@@ -923,6 +927,7 @@ func NewTrainingService(channelService escrow.PaymentChannelService, serMetaData
 			storage:              storage,
 			userStorage:          userStorage,
 			pendingStorage:       pendingStorage,
+			publicStorage:        publicStorage,
 			serviceUrl:           serviceURL,
 			trainingMetadata:     &trainMD,
 			methodsMetadata:      methodsMD,

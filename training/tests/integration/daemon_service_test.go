@@ -49,7 +49,7 @@ func (suite *DaemonServiceSuite) SetupSuite() {
 	}
 
 	suite.daemonService = training.NewDaemonsService(
-		serviceMetadata, orgMetadata, nil, modelStorage, userModelStorage, pendingModelStorage, "http://localhost:5001", nil, nil,
+		serviceMetadata, orgMetadata, nil, modelStorage, userModelStorage, pendingModelStorage, nil, "http://localhost:5001", nil, nil,
 	)
 
 	address := "localhost:5001"
