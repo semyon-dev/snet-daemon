@@ -244,6 +244,27 @@ func (suite *ModelStorageSuite) TestPendingModelStorage_Get() {
 	assert.Equal(suite.T(), data, newData)
 }
 
+func (suite *ModelStorageSuite) TestPendingModelStorage_AddPendingModelId() {
+	key := suite.getPendingModelKey()
+	data := suite.getPendingModelData([]string{"1", "2"})
+
+	err := suite.pendingStorage.Put(key, data)
+	assert.NoError(suite.T(), err)
+
+	newData, ok, err := suite.pendingStorage.Get(key)
+	assert.True(suite.T(), ok)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), data, newData)
+
+	newModelId := "3"
+	data = suite.getPendingModelData([]string{"1", "2", "3"})
+	err = suite.pendingStorage.AddPendingModelId(key, newModelId)
+	assert.NoError(suite.T(), err)
+	newData, ok, err = suite.pendingStorage.Get(key)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), data, newData)
+}
+
 func (suite *ModelStorageSuite) TestPublicModelStorage_Get() {
 	key := suite.getPublicModelKey()
 	data := suite.getPublicModelData([]string{"1", "2"})
@@ -254,5 +275,26 @@ func (suite *ModelStorageSuite) TestPublicModelStorage_Get() {
 	newData, ok, err := suite.publicStorage.Get(key)
 	assert.True(suite.T(), ok)
 	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), data, newData)
+}
+
+func (suite *ModelStorageSuite) TestPublicModelStorage_AddPublicModelId() {
+	key := suite.getPublicModelKey()
+	data := suite.getPublicModelData([]string{"1", "2"})
+
+	err := suite.publicStorage.Put(key, data)
+	assert.NoError(suite.T(), err)
+
+	newData, ok, err := suite.publicStorage.Get(key)
+	assert.True(suite.T(), ok)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), data, newData)
+
+	newModelId := "3"
+	data = suite.getPublicModelData([]string{"1", "2", "3"})
+	err = suite.publicStorage.AddPublicModelId(key, newModelId)
+	assert.NoError(suite.T(), err)
+	newData, ok, err = suite.publicStorage.Get(key)
+	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), data, newData)
 }
