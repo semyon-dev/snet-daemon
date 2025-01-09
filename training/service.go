@@ -64,32 +64,6 @@ type DaemonService struct {
 	methodsMetadata      map[string]*MethodMetadata
 }
 
-func NewDaemonsService(
-	serviceMetaData *blockchain.ServiceMetadata,
-	organizationMetaData *blockchain.OrganizationMetaData,
-	channelService escrow.PaymentChannelService,
-	storage *ModelStorage,
-	userStorage *ModelUserStorage,
-	pendingStorage *PendingModelStorage,
-	publicStorage *PublicModelStorage,
-	serviceUrl string,
-	trainingMedadata *TrainingMetadata,
-	methodsMetadata map[string]*MethodMetadata,
-) *DaemonService {
-	return &DaemonService{
-		serviceMetaData:      serviceMetaData,
-		organizationMetaData: organizationMetaData,
-		channelService:       channelService,
-		storage:              storage,
-		userStorage:          userStorage,
-		pendingStorage:       pendingStorage,
-		publicStorage:        publicStorage,
-		serviceUrl:           serviceUrl,
-		trainingMetadata:     trainingMedadata,
-		methodsMetadata:      methodsMetadata,
-	}
-}
-
 func (ds *DaemonService) CreateModel(c context.Context, request *NewModelRequest) (*ModelResponse, error) {
 
 	zap.L().Debug("CreateModel request")
@@ -157,22 +131,20 @@ func (ds *DaemonService) CreateModel(c context.Context, request *NewModelRequest
 	return modelResponse, err
 }
 
-func (ds *DaemonService) buildPendingModelKey() *PendingModelKey {
-	return &PendingModelKey{
+func (ds *DaemonService) buildPublicModelKey() *PublicModelKey {
+	return &PublicModelKey{
 		OrganizationId: config.GetString(config.OrganizationId),
 		ServiceId:      config.GetString(config.ServiceId),
 		GroupId:        ds.organizationMetaData.GetGroupIdString(),
 	}
 }
 
-func (ds *DaemonService) setPendingModelIds(modelIds *[]string) {
-	key := ds.buildPendingModelKey()
-
-	data := &PendingModelData{
-		ModelIDs: *modelIds,
+func (ds *DaemonService) buildPendingModelKey() *PendingModelKey {
+	return &PendingModelKey{
+		OrganizationId: config.GetString(config.OrganizationId),
+		ServiceId:      config.GetString(config.ServiceId),
+		GroupId:        ds.organizationMetaData.GetGroupIdString(),
 	}
-
-	ds.pendingStorage.Put(key, data)
 }
 
 func (ds *DaemonService) getPendingModelIds() (*PendingModelData, error) {
@@ -228,7 +200,7 @@ func (ds *DaemonService) updateModelStatusworker(ctx context.Context, tasks <-ch
 	}
 }
 
-func (ds *DaemonService) ManageUpdateModelStatusWorkers(ctx context.Context, interval time.Duration, orgID, serviceID, groupID string) {
+func (ds *DaemonService) ManageUpdateModelStatusWorkers(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	data, err := ds.getPendingModelIds()
 	if err != nil {
@@ -513,6 +485,15 @@ func (ds *DaemonService) createModelDetails(request *NewModelRequest, response *
 		zap.L().Debug("creating training model", zap.String("userKey", userKey.String()), zap.String("userData", userData.String()))
 	}
 
+	if request.Model.IsPublic {
+		publicModelKey := ds.buildPublicModelKey()
+		err := ds.publicStorage.AddPublicModelId(publicModelKey, response.ModelId)
+		if err != nil {
+			zap.L().Error("error in adding model id to public model storage")
+		}
+		zap.L().Debug("adding model id to public model storage", zap.String("modelId", response.ModelId), zap.String("key", publicModelKey.String()))
+	}
+
 	return data, nil
 }
 
@@ -654,7 +635,17 @@ func (ds *DaemonService) updateModelDetails(request *UpdateModelRequest) (data *
 
 // ensure only authorized use
 func (ds *DaemonService) verifySignerHasAccessToTheModel(modelId string, address string) (err error) {
-	key := &ModelUserKey{
+	// check if model is public
+	publicModelKey := ds.buildPublicModelKey()
+	publicModels, ok, err := ds.publicStorage.Get(publicModelKey)
+	if ok && err == nil {
+		if slices.Contains(publicModels.ModelIDs, modelId) {
+			return
+		}
+	}
+
+	// check user access if model is not public
+	userModelKey := &ModelUserKey{
 		OrganizationId: config.GetString(config.OrganizationId),
 		ServiceId:      config.GetString(config.ServiceId),
 		GroupId:        ds.organizationMetaData.GetGroupIdString(),
@@ -662,7 +653,7 @@ func (ds *DaemonService) verifySignerHasAccessToTheModel(modelId string, address
 		//GRPCServiceName: serviceName,
 		UserAddress: address,
 	}
-	data, ok, err := ds.userStorage.Get(key)
+	data, ok, err := ds.userStorage.Get(userModelKey)
 	if ok && err == nil {
 		if !slices.Contains(data.ModelIds, modelId) {
 			return fmt.Errorf("user %v, does not have access to model Id %v", address, modelId)
@@ -956,7 +947,7 @@ func NewTrainingService(channelService escrow.PaymentChannelService, serMetaData
 			methodsMetadata:      methodsMD,
 		}
 
-		go daemonService.ManageUpdateModelStatusWorkers(context.Background(), 4*time.Second, "3", "2", "1")
+		go daemonService.ManageUpdateModelStatusWorkers(context.Background(), 4*time.Second)
 
 		return daemonService
 	}
